@@ -1,0 +1,138 @@
+package com.cc.AIservice;
+
+import com.cc.dto.request.ConsultationSessionCreateDTO;
+import com.cc.dto.response.ConsultationMessageResponseDTO;
+import com.cc.entity.ConsultationSession;
+import com.cc.service.ConsultationMessageService;
+import com.cc.service.ConsultationSessionService;
+import jakarta.annotation.Resource;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+@Service
+public class PsychologicalSupportService {
+
+    @Resource
+    @Qualifier("open-ai")
+    private ChatClient chatClient;
+
+    @Resource
+    private ChatMemory chatMemory;
+
+    @Resource
+    private ConsultationSessionService consultationSessionService;
+
+    @Resource
+    private ConsultationMessageService consultationMessageService;
+
+    @Resource
+    private EmotionAnalysisService emotionAnalysisService;
+
+    public StructOutPut.StreamChatSession startSession(Long userId, ConsultationSessionCreateDTO createDTO) {
+        // 创建数据库会话记录
+        ConsultationSession consultationSession = consultationSessionService.createSession(userId, createDTO);
+
+        // 将初始用户消息保存到Message表
+        consultationMessageService.saveUserMessage(consultationSession.getId(), createDTO.getInitialMessage(), null);
+
+        // 创建会话信息
+        String sessionId = "session_" + consultationSession.getId();
+        return new StructOutPut.StreamChatSession(
+                sessionId,
+                userId,
+                createDTO.getInitialMessage(),
+                System.currentTimeMillis(),
+                System.currentTimeMillis() + 86400000L, // 24小时
+                1,
+                "ACTIVE"
+        );
+    }
+
+    // 流式对话
+    public Flux<String> streamPsychologicalChat(Long userId, boolean isAdmin, String sessionId, String userMessage) {
+        // 创建响应流
+        return Flux.create(sink -> {
+            Long dbSessionId = extractSessionId(sessionId);
+            if (dbSessionId == null) {
+                sink.error(new RuntimeException("会话ID格式错误"));
+                return;
+            }
+            // 校验会话归属；若会话已被删除（前端页面仍持有旧引用）则按原ID重建，保证对话无缝继续
+            try {
+                consultationSessionService.getSessionOrRebuild(dbSessionId, userId, isAdmin);
+            } catch (Exception e) {
+                sink.error(e);
+                return;
+            }
+            // 是否为初始消息
+            boolean isInitialMessage = false;
+            // 检查是否为初始消息，避免重复保存
+            Integer messageCount = consultationMessageService.getMessageCountBySessionId(dbSessionId);
+            if (messageCount == 1) {
+                ConsultationMessageResponseDTO lastMessage = consultationMessageService.getLastMessageBySessionId(dbSessionId);
+                if (lastMessage != null && lastMessage.getSenderType() == 1 && userMessage.equals(lastMessage.getContent())) {
+                    isInitialMessage = true;
+                }
+            }
+            if (!isInitialMessage) {
+                // 保存用户消息到数据库
+                consultationMessageService.saveUserMessage(dbSessionId, userMessage, null);
+            }
+
+            // 进行流式对话
+            // 生成对话记忆管理
+            String conversationId = "conversation_" + sessionId;
+            // 构建系统提示词
+            Prompt prompt = new Prompt(List.of(
+                    new SystemMessage(PromptManage.PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT)
+            ));
+
+            //用于存储AI完成的响应
+            StringBuilder fullResponse = new StringBuilder();
+
+            // 使用chatClient发送消息到Open AI
+            // 注意：MessageChatMemoryAdvisor 会在调用前读取记忆并在调用后自动保存本轮用户消息与AI回复，
+            // 此处不再手动写入 chatMemory，避免每条消息在记忆中重复导致 AI 回复复读
+            chatClient.prompt(prompt)
+                    .user(userMessage)
+                    .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
+                    .stream()
+                    .content()
+                    .doOnNext(Fragment -> {
+                        fullResponse.append(Fragment);
+                        sink.next(Fragment);
+                    })
+                    .doOnComplete(() -> {
+                        String completeRes = fullResponse.toString();
+                        // 将AI返回的内容保存到数据库
+                        consultationMessageService.saveAimessage(dbSessionId, completeRes, "openai");
+
+                        // 异步触发会话情绪分析
+                        emotionAnalysisService.analyzeSessionAsync(dbSessionId);
+
+                        sink.complete();
+                    })
+                    .doOnError(error -> {
+                        sink.error(error);
+                    })
+                    .subscribe(); // 订阅并启动流
+        });
+    }
+
+    // 获取参数中的sessionId
+    public Long extractSessionId(String sessionId) {
+        if (sessionId != null && sessionId.startsWith("session_")) {
+            // 截取id具体值
+            String idStr = sessionId.substring("session_".length());
+            return Long.parseLong(idStr);
+        }
+        return null;
+    }
+}
