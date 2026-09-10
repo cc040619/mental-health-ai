@@ -1,6 +1,8 @@
 package com.cc.service.convert;
 
+import com.cc.dto.request.ProfileUpdateDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
+import com.cc.dto.response.ProfileResponseDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
 import com.cc.entity.User;
 import com.cc.enums.UserStatus;
@@ -31,6 +33,30 @@ public class UserConvert {
                 .userTypeDisplayName(user.getUserTypeDisplayName())
                 .status(user.getStatus())
                 .statusDisplayName(user.getStatusDisplayName())
+                .displayName(user.getDisplayName())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * 构建个人中心资料响应 DTO（含个人简介）
+     *
+     * @param user 用户实体
+     * @return 个人资料响应
+     */
+    public static ProfileResponseDTO entityToProfileResponse(User user) {
+        return ProfileResponseDTO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .nickname(user.getNickname())
+                .avatar(user.getAvatar())
+                .phone(user.getPhone())
+                .gender(user.getGender())
+                .genderDisplayName(getGenderDisplayName(user.getGender()))
+                .birthday(user.getBirthday())
+                .bio(user.getBio())
                 .displayName(user.getDisplayName())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

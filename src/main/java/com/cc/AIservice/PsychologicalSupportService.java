@@ -65,8 +65,9 @@ public class PsychologicalSupportService {
                 return;
             }
             // 校验会话归属；若会话已被删除（前端页面仍持有旧引用）则按原ID重建，保证对话无缝继续
+            ConsultationSession session;
             try {
-                consultationSessionService.getSessionOrRebuild(dbSessionId, userId, isAdmin);
+                session = consultationSessionService.getSessionOrRebuild(dbSessionId, userId, isAdmin);
             } catch (Exception e) {
                 sink.error(e);
                 return;
@@ -89,9 +90,10 @@ public class PsychologicalSupportService {
             // 进行流式对话
             // 生成对话记忆管理
             String conversationId = "conversation_" + sessionId;
-            // 构建系统提示词
+            // 构建系统提示词：按会话场景选择对应提示词（仅内存常量选择，零额外耗时，不引入串行AI调用）
+            String systemPrompt = PromptManage.getSystemPromptByScene(session != null ? session.getScene() : null);
             Prompt prompt = new Prompt(List.of(
-                    new SystemMessage(PromptManage.PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT)
+                    new SystemMessage(systemPrompt)
             ));
 
             //用于存储AI完成的响应

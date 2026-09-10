@@ -7,8 +7,10 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -19,6 +21,8 @@ import java.time.LocalDateTime;
 @Data
 @TableName("consultation_message")
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ConsultationMessage {
     // 消息ID
     @TableId(type = IdType.AUTO)
@@ -52,6 +56,14 @@ public class ConsultationMessage {
     @Size(max = 50, message = "AI模型名称长度不能超过50个字符")
     @TableField("ai_model")
     private String aiModel;
+
+    // 是否收藏 0:否 1:是
+    @TableField("is_favorite")
+    private Integer isFavorite;
+
+    // 收藏时间
+    @TableField("favorited_at")
+    private LocalDateTime favoritedAt;
 
     // 创建时间
     @TableField("created_at")

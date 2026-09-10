@@ -4,6 +4,16 @@ export function login(data) {
     return service.post('/user/login', data)
 }
 
+// 发送邮箱登录验证码
+export function sendEmailCode(data) {
+    return service.post('/user/email/send-code', data)
+}
+
+// 邮箱验证码登录
+export function emailLogin(data) {
+    return service.post('/user/email/login', data)
+}
+
 
 export function categoryTree() {
     return service.get('/knowledge/category/tree')

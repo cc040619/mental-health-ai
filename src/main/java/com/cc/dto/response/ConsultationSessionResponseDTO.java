@@ -22,6 +22,15 @@ public class ConsultationSessionResponseDTO {
     // 会话标题
     private String sessionTitle;
 
+    // 咨询场景编码：EMOTION/RELATIONSHIP/ACADEMIC/SLEEP/OTHER
+    private String scene;
+
+    // 咨询场景中文名
+    private String sceneLabel;
+
+    // 场景 emoji
+    private String sceneIcon;
+
     // 开始时间
     private LocalDateTime startedAt;
 
@@ -36,4 +45,10 @@ public class ConsultationSessionResponseDTO {
 
     // 用户昵称（管理端头像列）
     private String userNickname;
+
+    // 用户评分 1-5（未评为 null）
+    private Integer rating;
+
+    // 是否已生成会话总结
+    private Boolean hasSummary;
 }

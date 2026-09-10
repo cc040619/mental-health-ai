@@ -85,6 +85,70 @@ const frontendRoutes = [
                 component: () => import('@/views/emotionDiary.vue')
             },
             {
+                path: 'assessment',
+                component: () => import('@/views/AssessmentList.vue'),
+                meta: { title: '心理测评', requiresAuth: true }
+            },
+            {
+                path: 'assessment/quiz/:recordId',
+                component: () => import('@/views/AssessmentQuiz.vue'),
+                props: true,
+                meta: { requiresAuth: true }
+            },
+            {
+                path: 'assessment/report/:recordId',
+                component: () => import('@/views/AssessmentReport.vue'),
+                props: true,
+                meta: { requiresAuth: true }
+            },
+            {
+                path: 'assessment/history',
+                component: () => import('@/views/AssessmentHistory.vue'),
+                meta: { title: '测评历史', requiresAuth: true }
+            },
+            {
+                path: 'course',
+                component: () => import('@/views/course/CourseList.vue'),
+                meta: { title: '心理课程', requiresAuth: true }
+            },
+            {
+                path: 'course/:id',
+                component: () => import('@/views/course/CourseDetail.vue'),
+                props: true,
+                meta: { title: '课程详情', requiresAuth: true }
+            },
+            {
+                path: 'my-courses',
+                component: () => import('@/views/course/MyCourses.vue'),
+                meta: { title: '我的课程', requiresAuth: true }
+            },
+            {
+                path: 'daily-practice',
+                component: () => import('@/views/course/DailyPractice.vue'),
+                meta: { title: '每日一练', requiresAuth: true }
+            },
+            {
+                path: 'community',
+                component: () => import('@/views/community/CommunityHome.vue'),
+                meta: { title: '暖心社区', requiresAuth: true }
+            },
+            {
+                path: 'community/publish',
+                component: () => import('@/views/community/PostPublish.vue'),
+                meta: { title: '发布帖子', requiresAuth: true }
+            },
+            {
+                path: 'community/post/:id',
+                component: () => import('@/views/community/PostDetail.vue'),
+                props: true,
+                meta: { title: '帖子详情', requiresAuth: true }
+            },
+            {
+                path: 'community/mine',
+                component: () => import('@/views/community/CommunityMine.vue'),
+                meta: { title: '我的社区', requiresAuth: true }
+            },
+            {
                 path: 'knowledge',
                 component: () => import('@/views/frontendKnowledge.vue')
             },
@@ -92,6 +156,11 @@ const frontendRoutes = [
                 path: 'knowledge/article/:id',
                 component: () => import('@/views/articleDetail.vue'),
                 props: true
+            },
+            {
+                path: 'profile',
+                component: () => import('@/views/Profile.vue'),
+                meta: { title: '个人中心', requiresAuth: true }
             }
         ]
     }
@@ -105,6 +174,11 @@ const router = createRouter({
 // 路由前置守卫
 router.beforeEach((to, from, next) => {
     const token = localStorage.getItem('token')
+    // 需要登录才能访问的页面（如个人中心），未登录则跳转登录页
+    if (to.meta?.requiresAuth && !token) {
+        next('/auth/login')
+        return
+    }
     // 当前用户是否登录
     if (token) {
         const userInfo = JSON.parse(localStorage.getItem('userInfo'))

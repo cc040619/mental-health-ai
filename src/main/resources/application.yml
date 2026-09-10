@@ -17,6 +17,20 @@
       database: 0
       timeout: 3000ms
 
+  # QQ邮箱SMTP配置（用于发送验证码）
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: ${QQ_EMAIL:your-qq-email@qq.com}
+    password: ${QQ_EMAIL_AUTH_CODE:your-qq-email-auth-code}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
   ai:
     openai:
       chat:

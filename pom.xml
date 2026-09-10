@@ -109,6 +109,12 @@
             <artifactId>aliyun-sdk-oss</artifactId>
             <version>3.17.4</version>
         </dependency>
+
+        <!-- Spring Mail 依赖（用于QQ邮箱验证码发送） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <!-- JDK9+ 需要手动引入的 JAXB 依赖（aliyun-sdk-oss 依赖） -->
         <dependency>
             <groupId>javax.xml.bind</groupId>

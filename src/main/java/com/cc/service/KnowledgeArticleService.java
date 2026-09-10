@@ -53,11 +53,10 @@ public class KnowledgeArticleService {
     public IPage<ArticleSimpleResponseDTO> page(ArticlePageQueryDTO queryDTO) {
         String sortColumn;
         String sortDirection;
-        Integer status = queryDTO.getStatus();
 
         if (StringUtils.hasText(queryDTO.getSortField())) {
             // 前端文章列表：仅展示已发布文章
-            status = 1;
+            queryDTO.setStatus(1);
             sortColumn = "readCount".equals(queryDTO.getSortField()) ? "a.read_count" : "a.published_at";
             sortDirection = "asc".equalsIgnoreCase(queryDTO.getSortDirection()) ? "ASC" : "DESC";
         } else {

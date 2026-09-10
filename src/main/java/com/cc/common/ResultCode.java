@@ -36,6 +36,7 @@ public enum ResultCode {
     BUSINESS_ERROR("6000", "业务处理失败"),
     ACCOUNT_SAME("6001", "用户名已存在"),
     USER_NOT_EXIST("6002", "用户不存在"),
+    DATA_DUPLICATE("6003", "数据已存在"),
 
     // token相关错误
     TOKEN_INVALID("A0230", "token无效"),

@@ -8,10 +8,14 @@ import com.cc.common.Result;
 import com.cc.common.ResultCode;
 import com.cc.dto.request.ConsultationSessionCreateDTO;
 import com.cc.dto.request.ConsultationStreamDTO;
+import com.cc.dto.request.SessionFeedbackDTO;
 import com.cc.dto.request.SessionPageQueryDTO;
 import com.cc.dto.response.ConsultationMessageResponseDTO;
 import com.cc.dto.response.ConsultationSessionResponseDTO;
 import com.cc.dto.response.EmotionAnalysisDTO;
+import com.cc.dto.response.FavoriteMessageResponseDTO;
+import com.cc.dto.response.HumanHandoffResponseDTO;
+import com.cc.dto.response.SessionSummaryResponseDTO;
 import com.cc.entity.ConsultationSession;
 import com.cc.service.ConsultationMessageService;
 import com.cc.service.ConsultationSessionService;
@@ -27,12 +31,15 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -135,11 +142,74 @@ public class PsychologicalChatController {
         return Result.ok(consultationMessageService.listBySessionId(session.getId()));
     }
 
-    // 获取会话情绪分析结果（路径参数为 session_<id> 格式）
+    // 获取会话情绪分析结果（路径参数为 session_<id> 格式），校验会话归属
     @GetMapping("/session/{sessionId}/emotion")
     public Result<EmotionAnalysisDTO> getSessionEmotion(@PathVariable String sessionId) {
-        CurrentUserUtils.getCurrentUserId();
-        EmotionAnalysisDTO emotion = consultationSessionService.getSessionEmotion(sessionId);
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        EmotionAnalysisDTO emotion = consultationSessionService.getSessionEmotion(
+                sessionId, userId, CurrentUserUtils.isAdmin());
         return Result.ok(emotion);
+    }
+
+    // 触发会话总结：已有总结直接返回，否则异步生成并立即返回"生成中"
+    @PostMapping("/sessions/{sessionId}/summary")
+    public Result<SessionSummaryResponseDTO> triggerSummary(@PathVariable Long sessionId) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        SessionSummaryResponseDTO summary = consultationSessionService.triggerSummary(
+                sessionId, userId, CurrentUserUtils.isAdmin());
+        return Result.ok(summary);
+    }
+
+    // 获取会话总结（无总结时返回"生成中"状态）
+    @GetMapping("/sessions/{sessionId}/summary")
+    public Result<SessionSummaryResponseDTO> getSummary(@PathVariable Long sessionId) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        SessionSummaryResponseDTO summary = consultationSessionService.getSummary(
+                sessionId, userId, CurrentUserUtils.isAdmin());
+        return Result.ok(summary);
+    }
+
+    // 收藏/取消收藏消息（toggle，返回最新收藏状态）
+    @PostMapping("/messages/{messageId}/favorite")
+    public Result<Map<String, Object>> toggleFavorite(@PathVariable Long messageId) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        Boolean isFavorite = consultationMessageService.toggleFavorite(
+                messageId, userId, CurrentUserUtils.isAdmin());
+        Map<String, Object> data = new HashMap<>();
+        data.put("isFavorite", isFavorite);
+        return Result.ok(data);
+    }
+
+    // 收藏的AI回复分页列表（size 上限 50）
+    @GetMapping("/favorites")
+    public Result<Map<String, Object>> listFavorites(@RequestParam(defaultValue = "1") long pageNum,
+                                                     @RequestParam(defaultValue = "10") long pageSize) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        long safePageNum = Math.max(pageNum, 1);
+        long safePageSize = Math.min(Math.max(pageSize, 1), 50);
+        Page<FavoriteMessageResponseDTO> page = consultationMessageService.pageFavorites(
+                userId, safePageNum, safePageSize);
+        Map<String, Object> data = new HashMap<>();
+        data.put("records", page.getRecords());
+        data.put("total", page.getTotal());
+        return Result.ok(data);
+    }
+
+    // 提交会话评价（评分1-5 + 文字反馈，重复提交覆盖更新）
+    @PutMapping("/sessions/{sessionId}/feedback")
+    public Result<Void> submitFeedback(@PathVariable Long sessionId,
+                                       @Valid @RequestBody SessionFeedbackDTO feedbackDTO) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        consultationSessionService.saveFeedback(sessionId, userId, CurrentUserUtils.isAdmin(), feedbackDTO);
+        return Result.ok();
+    }
+
+    // 转人工引导（模板实现：咨询师模块未上线，返回温和引导文案与求助资源）
+    @PostMapping("/sessions/{sessionId}/human-handoff")
+    public Result<HumanHandoffResponseDTO> humanHandoff(@PathVariable Long sessionId) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        HumanHandoffResponseDTO handoff = consultationSessionService.requestHumanHandoff(
+                sessionId, userId, CurrentUserUtils.isAdmin());
+        return Result.ok(handoff);
     }
 }

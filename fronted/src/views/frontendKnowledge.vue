@@ -98,7 +98,7 @@
                                 </div>
                                 <div class="meta-item">
                                     <el-icon><Platform /></el-icon>
-                                    <span>观看人数 {{ item.readCount }}</span>
+                                    <span>观看次数 {{ item.readCount }}</span>
                                 </div>
                             </div>
                         </div>
@@ -155,7 +155,8 @@
     }
     // 获取封面图片
     const getImage = (url) => {
-        return url ? resolveFileUrl(url) : 'https://file.itndedu.com/psychology_ai.png'
+        return url ? resolveFileUrl(url) : '\n' +
+            'https://mental-health-ai.oss-cn-beijing.aliyuncs.com/bussiness/ARTICLE/202609/%E5%BE%AE%E4%BF%A1%E5%9B%BE%E7%89%87_20260907150713_126_2.jpg'
     }
 
     const handleChange = (page) => {

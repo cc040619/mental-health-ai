@@ -26,7 +26,10 @@ public class SecurityConfig {
     private  static final String[] PUBLIC_PATHS = {
             "/",
             "/api/user/login",
-            "/api/user/add"
+            "/api/user/add",
+            "/api/user/email/send-code",
+            "/api/user/email/login",
+            "/api/user/password/reset"
     };
 
     public static Boolean isPublicPATH(String requestUri) {

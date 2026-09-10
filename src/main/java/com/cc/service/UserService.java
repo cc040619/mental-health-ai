@@ -2,6 +2,7 @@ package com.cc.service;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.cc.dto.request.EmailLoginRequestDTO;
 import com.cc.dto.request.UserLoginRequestDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
@@ -14,6 +15,7 @@ import com.cc.util.JwtTokenUtil;
 import jakarta.annotation.Resource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * 用户业务层，处理登录、注册、查询用户等业务逻辑
@@ -29,6 +31,9 @@ public class UserService {
 
     @Resource
     private TokenService tokenService;
+
+    @Resource
+    private EmailService emailService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -131,5 +136,63 @@ public class UserService {
             throw new BusinessException("用户不存在");
         }
         return UserConvert.entityToDetailResponse(user);
+    }
+
+    /**
+     * 发送邮箱登录验证码
+     *
+     * <p>不论邮箱是否已注册都会调用邮件服务：若邮箱未注册则不会真正发送验证码，
+     * 但为防止账户枚举攻击，统一抛出业务异常时使用同一提示语。</p>
+     *
+     * @param email 目标邮箱
+     */
+    public void sendEmailLoginCode(String email) {
+        if (!StringUtils.hasText(email)) {
+            throw new BusinessException("邮箱不能为空");
+        }
+        // 校验邮箱是否已注册
+        LambdaQueryWrapper<User> emailQuery = new LambdaQueryWrapper<>();
+        emailQuery.eq(User::getEmail, email);
+        if (userMapper.selectCount(emailQuery) == 0) {
+            throw new BusinessException("该邮箱尚未注册，请先注册");
+        }
+        // 调用邮件服务发送验证码
+        emailService.sendLoginCode(email);
+    }
+
+    /**
+     * 邮箱验证码登录逻辑
+     *
+     * <p>流程：校验验证码 -> 查询用户 -> 检查状态 -> 生成 JWT -> 写入 Redis 白名单 -> 返回响应</p>
+     *
+     * @param loginDTO 邮箱 + 验证码
+     * @return 登录响应（含 token 与用户详情）
+     */
+    public UserLoginResponseDTO emailLogin(EmailLoginRequestDTO loginDTO) {
+        // 校验验证码
+        emailService.verifyLoginCode(loginDTO.getEmail(), loginDTO.getCode());
+
+        // 查询用户
+        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(User::getEmail, loginDTO.getEmail());
+        User user = userMapper.selectOne(queryWrapper);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 检查用户的状态
+        if (!user.isActive()) {
+            throw new BusinessException("用户已被禁用，请联系管理员");
+        }
+
+        // 生成 JWT token
+        String token = JwtTokenUtil.generateToken(user.getId(), user.getUsername(), user.getUserType());
+
+        // 将 token 写入 Redis 白名单（TTL 与 JWT 过期时间保持一致）
+        tokenService.saveLoginToken(user.getId(), token);
+
+        // 构建响应体
+        UserLoginResponseDTO.UserDetailResponseDTO userInfo = UserConvert.entityToDetailResponse(user);
+        return UserConvert.entityToLoginResponse(token, userInfo);
     }
 }

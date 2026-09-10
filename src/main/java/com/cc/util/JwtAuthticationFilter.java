@@ -1,5 +1,7 @@
 package com.cc.util;
 
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.cc.common.ResultCode;
 import com.cc.config.SecurityConfig;
 import jakarta.annotation.Resource;
@@ -11,6 +13,7 @@ import com.cc.dto.response.UserLoginResponseDTO;
 import com.cc.enums.UserStatus;
 import com.cc.service.TokenService;
 import com.cc.service.UserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,6 +30,7 @@ import java.util.List;
  * @author cc
  * @date 2026-09-01
  */
+@Slf4j
 public class JwtAuthticationFilter extends OncePerRequestFilter {
     @Resource
     private UserService userService;
@@ -54,8 +58,22 @@ public class JwtAuthticationFilter extends OncePerRequestFilter {
         // 1. 提取 JWT token
         String token = JwtTokenUtil.extractTokenFromRequest(request);
         if (StringUtils.hasText(token)) {
-            // 2. 验证token并获取用户信息
-            JwtTokenUtil.TokenVerificationResult validationResult = JwtTokenUtil.validateToken(token);
+            // 2. 验证token并获取用户信息（过期/签名错误等校验异常在此短路返回401，禁止异常冒泡到/error产生500噪音）
+            JwtTokenUtil.TokenVerificationResult validationResult;
+            try {
+                validationResult = JwtTokenUtil.validateToken(token);
+            } catch (TokenExpiredException e) {
+                clearSecurityContext();
+                // 只记录URI，禁止打印token内容
+                log.info("token已过期, uri={}", request.getRequestURI());
+                ResponseUtil.writeError(response, ResultCode.TOKEN_EXPIRED);
+                return;
+            } catch (JWTVerificationException e) {
+                clearSecurityContext();
+                log.warn("token校验失败, uri={}", request.getRequestURI());
+                ResponseUtil.writeError(response, ResultCode.TOKEN_INVALID);
+                return;
+            }
             if (validationResult != null && validationResult.isValid()) {
                 // 3. 校验 Redis 白名单，拦截已登出的 token
                 if (!tokenService.isValidLoginToken(validationResult.getUserId(), token)) {

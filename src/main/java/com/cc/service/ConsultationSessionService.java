@@ -6,12 +6,17 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.cc.AIservice.ConsultationSummaryService;
 import com.cc.dto.request.ConsultationSessionCreateDTO;
+import com.cc.dto.request.SessionFeedbackDTO;
 import com.cc.dto.response.ConsultationSessionResponseDTO;
 import com.cc.dto.response.EmotionAnalysisDTO;
+import com.cc.dto.response.HumanHandoffResponseDTO;
+import com.cc.dto.response.SessionSummaryResponseDTO;
 import com.cc.entity.ConsultationMessage;
 import com.cc.entity.ConsultationSession;
 import com.cc.entity.User;
+import com.cc.enums.SessionScene;
 import com.cc.exception.BusinessException;
 import com.cc.mapper.ConsultationMessageMapper;
 import com.cc.mapper.ConsultationSessionMapper;
@@ -39,19 +44,29 @@ public class ConsultationSessionService {
     @Resource
     private ConsultationMessageMapper consultationMessageMapper;
 
+    @Resource
+    private ConsultationSummaryService consultationSummaryService;
+
     public ConsultationSession createSession(Long userId, ConsultationSessionCreateDTO createDTO) {
         // 验证用户是否存在
         User user =userMapper.selectById(userId);
         if (user != null) {
+            // 校验咨询场景合法值
+            SessionScene scene = SessionScene.fromCode(createDTO.getScene());
+            if (scene == null) {
+                throw new BusinessException("请选择有效的咨询场景");
+            }
             // 创建会话记录
              ConsultationSession session = ConsultationSession.builder()
                     .userId(userId)
                     .sessionTitle(createDTO.getSessionTitle())
+                    .scene(scene.getCode())
                     .startedAt(LocalDateTime.now())
                     .build();
-            // 如果未提供标题
+            // 如果未提供标题，默认标题带场景前缀
             if (StrUtil.isBlank(createDTO.getSessionTitle())) {
-                session.setSessionTitle(String.format("小聪AI助手 - " + DateUtil.format(LocalDateTime.now(), "MM-dd HH:mm")));
+                session.setSessionTitle(String.format("【%s】小聪AI助手 - %s",
+                        scene.getLabel(), DateUtil.format(LocalDateTime.now(), "MM-dd HH:mm")));
             }
 
             // 插入记录
@@ -123,6 +138,7 @@ public class ConsultationSessionService {
                     .id(sessionId)
                     .userId(userId)
                     .sessionTitle(String.format("小聪AI助手 - " + DateUtil.format(LocalDateTime.now(), "MM-dd HH:mm")))
+                    .scene(SessionScene.OTHER.getCode())
                     .startedAt(LocalDateTime.now())
                     .build();
             try {
@@ -161,9 +177,11 @@ public class ConsultationSessionService {
      * 获取会话情绪分析结果，返回最近一次存储的分析 JSON；无分析数据时返回默认值
      *
      * @param sessionIdParam 会话ID参数，支持 "session_1" 或纯数字 "1"
+     * @param userId         当前登录用户ID（归属校验）
+     * @param isAdmin        是否为管理员
      * @return 情绪分析结果
      */
-    public EmotionAnalysisDTO getSessionEmotion(String sessionIdParam) {
+    public EmotionAnalysisDTO getSessionEmotion(String sessionIdParam, Long userId, boolean isAdmin) {
         Long sessionId = parseSessionId(sessionIdParam);
         if (sessionId == null) {
             throw new BusinessException("会话ID格式错误");
@@ -171,6 +189,10 @@ public class ConsultationSessionService {
         ConsultationSession session = consultationSessionMapper.selectById(sessionId);
         if (session == null) {
             throw new BusinessException("会话不存在");
+        }
+        // 归属校验：仅会话所属用户（或管理员）可查看情绪分析
+        if (!isAdmin && !session.getUserId().equals(userId)) {
+            throw new BusinessException("无权查看该会话");
         }
         if (StringUtils.hasText(session.getLastEmotionAnalysis())) {
             try {
@@ -183,6 +205,116 @@ public class ConsultationSessionService {
             }
         }
         return EmotionAnalysisDTO.defaultAnalysis();
+    }
+
+    /**
+     * 触发会话总结：已有总结直接返回；否则异步生成并立即返回"生成中"状态
+     *
+     * @param sessionId 会话ID
+     * @param userId    当前登录用户ID
+     * @param isAdmin   是否为管理员
+     * @return 总结内容（READY）或生成中状态（GENERATING）
+     */
+    public SessionSummaryResponseDTO triggerSummary(Long sessionId, Long userId, boolean isAdmin) {
+        ConsultationSession session = getSessionOwned(sessionId, userId, isAdmin);
+        SessionSummaryResponseDTO existing = parseSummary(session);
+        if (existing != null) {
+            log.info("会话总结已存在，直接返回, sessionId={}", sessionId);
+            return existing;
+        }
+        // 异步生成，接口立即返回，不阻塞 HTTP 响应
+        consultationSummaryService.generateSummaryAsync(sessionId);
+        log.info("会话总结生成已触发, sessionId={}", sessionId);
+        return generatingSummary();
+    }
+
+    /**
+     * 获取会话总结：无总结时返回"生成中"状态
+     *
+     * @param sessionId 会话ID
+     * @param userId    当前登录用户ID
+     * @param isAdmin   是否为管理员
+     * @return 总结内容（READY）或生成中状态（GENERATING）
+     */
+    public SessionSummaryResponseDTO getSummary(Long sessionId, Long userId, boolean isAdmin) {
+        ConsultationSession session = getSessionOwned(sessionId, userId, isAdmin);
+        SessionSummaryResponseDTO existing = parseSummary(session);
+        return existing != null ? existing : generatingSummary();
+    }
+
+    /**
+     * 保存会话评价反馈（同一会话重复提交覆盖更新，幂等）
+     *
+     * @param sessionId 会话ID
+     * @param userId    当前登录用户ID
+     * @param isAdmin   是否为管理员
+     * @param feedbackDTO 评分与反馈内容
+     */
+    public void saveFeedback(Long sessionId, Long userId, boolean isAdmin, SessionFeedbackDTO feedbackDTO) {
+        getSessionOwned(sessionId, userId, isAdmin);
+        ConsultationSession update = ConsultationSession.builder()
+                .id(sessionId)
+                .rating(feedbackDTO.getRating())
+                .feedback(StringUtils.hasText(feedbackDTO.getFeedback()) ? feedbackDTO.getFeedback().trim() : null)
+                .build();
+        consultationSessionMapper.updateById(update);
+        log.info("会话评价已保存, sessionId={}", sessionId);
+    }
+
+    /**
+     * 转人工引导（模板实现）：校验归属后返回温和的共情文案与专业求助资源
+     *
+     * @param sessionId 会话ID
+     * @param userId    当前登录用户ID
+     * @param isAdmin   是否为管理员
+     * @return 转人工引导内容
+     */
+    public HumanHandoffResponseDTO requestHumanHandoff(Long sessionId, Long userId, boolean isAdmin) {
+        getSessionOwned(sessionId, userId, isAdmin);
+        log.info("用户请求转人工引导, sessionId={}", sessionId);
+        return HumanHandoffResponseDTO.builder()
+                .handoffAvailable(false)
+                .message("谢谢你愿意把感受告诉我，我会一直在这里陪伴你。你的情况值得更专业的支持，和专业人员聊聊会很有帮助。")
+                .hotline("全国心理援助热线 12356（号码信息请以官方渠道公布为准）")
+                .suggestion("建议预约学校心理中心或正规医院心理科，与专业咨询师面对面聊聊")
+                .build();
+    }
+
+    /**
+     * 解析会话实体中存储的总结 JSON，无效或不存在时返回 null
+     */
+    private SessionSummaryResponseDTO parseSummary(ConsultationSession session) {
+        if (!StringUtils.hasText(session.getSummary())) {
+            return null;
+        }
+        try {
+            SessionSummaryResponseDTO dto = JSONUtil.toBean(session.getSummary(), SessionSummaryResponseDTO.class);
+            if (dto != null && StringUtils.hasText(dto.getSummary())) {
+                dto.setStatus("READY");
+                if (dto.getCoreIssues() == null) {
+                    dto.setCoreIssues(List.of());
+                }
+                if (dto.getSuggestions() == null) {
+                    dto.setSuggestions(List.of());
+                }
+                return dto;
+            }
+        } catch (Exception e) {
+            log.warn("会话总结解析失败, sessionId={}", session.getId());
+        }
+        return null;
+    }
+
+    /**
+     * 构建"生成中"状态的总结响应
+     */
+    private SessionSummaryResponseDTO generatingSummary() {
+        return SessionSummaryResponseDTO.builder()
+                .status("GENERATING")
+                .summary("")
+                .coreIssues(List.of())
+                .suggestions(List.of())
+                .build();
     }
 
     /**
@@ -267,6 +399,17 @@ public class ConsultationSessionService {
         dto.setUserId(session.getUserId());
         dto.setSessionTitle(session.getSessionTitle());
         dto.setStartedAt(session.getStartedAt());
+        // 场景信息（历史数据 scene 为空时按 OTHER 兜底）
+        SessionScene scene = SessionScene.fromCode(session.getScene());
+        if (scene == null) {
+            scene = SessionScene.OTHER;
+        }
+        dto.setScene(scene.getCode());
+        dto.setSceneLabel(scene.getLabel());
+        dto.setSceneIcon(scene.getIcon());
+        // 评价与总结状态
+        dto.setRating(session.getRating());
+        dto.setHasSummary(StringUtils.hasText(session.getSummary()));
         return dto;
     }
 }

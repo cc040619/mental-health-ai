@@ -65,6 +65,10 @@ public class User {
     // 生日
     private LocalDate birthday;
 
+    // 个人简介
+    @Size(max = 500, message = "个人简介长度不能超过500个字符")
+    private String bio;
+
     // 用户类型 1:普通用户 2:管理员
     @TableField("user_type")
     private Integer userType;

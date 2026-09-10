@@ -9,25 +9,80 @@
             </div>
         </div>
         <div class="form-container">
+            <!-- 🎨 登录方式切换 — 手账风标签页 -->
+            <div class="tab-switch">
+                <span
+                    class="tab-item"
+                    :class="{ active: loginMode === 'account' }"
+                    @click="switchMode('account')"
+                >👤 账号登录</span>
+                <span
+                    class="tab-item"
+                    :class="{ active: loginMode === 'email' }"
+                    @click="switchMode('email')"
+                >✉️ 邮箱登录</span>
+            </div>
+
+            <!-- 🎨 账号密码登录表单 -->
             <el-form
-                ref="ruleFormRef"
-                :model="formData"
-                :rules="rules"
+                v-if="loginMode === 'account'"
+                ref="accountFormRef"
+                :model="accountForm"
+                :rules="accountRules"
                 label-position="top"
             >
                 <el-form-item label="用户名或邮箱" prop="username">
-                    <el-input v-model="formData.username" size="large" placeholder="请输入用户名">
+                    <el-input v-model="accountForm.username" size="large" placeholder="请输入用户名">
                         <!-- 🎨 手绘小图标前缀 -->
                         <template #prefix>👤</template>
                     </el-input>
                 </el-form-item>
                 <el-form-item label="密码" prop="password">
-                    <el-input v-model="formData.password" size="large" placeholder="请输入密码" type="password" show-password @keyup.enter="submitForm(ruleFormRef)">
+                    <el-input v-model="accountForm.password" size="large" placeholder="请输入密码" type="password" show-password @keyup.enter="submitAccountForm(accountFormRef)">
                         <template #prefix>🔒</template>
                     </el-input>
                 </el-form-item>
-                <el-button class="btn" size="large" type="primary" @click="submitForm(ruleFormRef)">登录</el-button>
+                <el-button class="btn" size="large" type="primary" @click="submitAccountForm(accountFormRef)">登录</el-button>
             </el-form>
+
+            <!-- 🎨 QQ邮箱验证码登录表单 -->
+            <el-form
+                v-else
+                ref="emailFormRef"
+                :model="emailForm"
+                :rules="emailRules"
+                label-position="top"
+            >
+                <el-form-item label="QQ邮箱" prop="email">
+                    <el-input v-model="emailForm.email" size="large" placeholder="请输入QQ邮箱">
+                        <template #prefix>✉️</template>
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="验证码" prop="code">
+                    <div class="code-row">
+                        <el-input
+                            v-model="emailForm.code"
+                            size="large"
+                            placeholder="请输入6位验证码"
+                            maxlength="6"
+                            @keyup.enter="submitEmailForm(emailFormRef)"
+                        >
+                            <template #prefix>🔑</template>
+                        </el-input>
+                        <el-button
+                            class="send-btn"
+                            size="large"
+                            type="primary"
+                            :disabled="countdown > 0"
+                            @click="handleSendCode"
+                        >
+                            {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
+                        </el-button>
+                    </div>
+                </el-form-item>
+                <el-button class="btn" size="large" type="primary" @click="submitEmailForm(emailFormRef)">登录</el-button>
+            </el-form>
+
             <div class="footer">
                 <p>还没有账户？<router-link to="/auth/register">去注册</router-link> 🧡</p>
             </div>
@@ -35,17 +90,23 @@
     </div>
 </template>
 <script setup>
-import { ref, reactive } from 'vue'
-import { login } from '@/api/admin'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onBeforeUnmount } from 'vue'
+import { login, sendEmailCode, emailLogin } from '@/api/admin'
+import { ElMessage } from 'element-plus'
+import { useRouter, useRoute } from 'vue-router'
 
-const ruleFormRef = ref()
+// 当前登录方式：account 账号密码 / email 邮箱验证码
+const loginMode = ref('account')
 
-const formData = reactive({
+const accountFormRef = ref()
+const emailFormRef = ref()
+
+// 账号密码表单
+const accountForm = reactive({
     username: '',
     password: ''
 })
-const rules = reactive({
+const accountRules = reactive({
     username: [
         { required: true, message: '请输入用户名', trigger: 'blur' }
     ],
@@ -54,32 +115,111 @@ const rules = reactive({
     ]
 })
 
-// 登录
+// 邮箱验证码表单
+const emailForm = reactive({
+    email: '',
+    code: ''
+})
+const emailRules = reactive({
+    email: [
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
+    ],
+    code: [
+        { required: true, message: '请输入验证码', trigger: 'blur' },
+        { min: 6, max: 6, message: '验证码为6位', trigger: 'blur' }
+    ]
+})
+
+// 验证码倒计时
+const countdown = ref(0)
+let timer = null
+const startCountdown = () => {
+    countdown.value = 60
+    timer = setInterval(() => {
+        countdown.value--
+        if (countdown.value <= 0) {
+            clearInterval(timer)
+            timer = null
+        }
+    }, 1000)
+}
+onBeforeUnmount(() => {
+    if (timer) clearInterval(timer)
+})
+
+// 切换登录方式
+const switchMode = (mode) => {
+    loginMode.value = mode
+}
+
+// 处理登录成功的统一逻辑
 const router = useRouter()
-const submitForm = async (formEl) => {
+const route = useRoute()
+const handleLoginSuccess = (data) => {
+    if (!data.token) {
+        ElMessage.error('登录失败')
+        return
+    }
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('userInfo', JSON.stringify(data.userInfo))
+    ElMessage.success('登录成功')
+    // 登录过期跳转携带的回跳地址：仅允许站内路径（防开放重定向）
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+    const safeRedirect = redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : ''
+    if (safeRedirect) {
+        router.push(safeRedirect)
+    } else if (data.userInfo.userType === 2) {
+        router.push('/back/dashboard')
+    } else {
+        router.push('/')
+    }
+}
+
+// 账号密码登录
+const submitAccountForm = async (formEl) => {
     if (!formEl) return
-    await formEl.validate((valid, fields) => {
+    await formEl.validate((valid) => {
         if (valid) {
-            console.log(formData, 'formData')
-            login(formData).then(data => {
-                // 判断token是否存在
-                if (!data.token) {
-                    return console.error('登录失败')
-                }
-                // 登录成功，保存token和用户信息
-                localStorage.setItem('token', data.token)
-                localStorage.setItem('userInfo', JSON.stringify(data.userInfo))
-                // 根据用户角色决定跳转的路径
-                if (data.userInfo.userType === 2) {
-                    router.push('/back/dashboard')
-                } else {
-                    router.push('/')
-                }
-            })
+            login(accountForm).then(data => {
+                handleLoginSuccess(data)
+            }).catch(() => {})
         }
     })
 }
 
+// 发送邮箱验证码
+const handleSendCode = async () => {
+    if (!emailForm.email) {
+        ElMessage.warning('请先输入邮箱')
+        return
+    }
+    // 简单的邮箱格式校验
+    const emailReg = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailReg.test(emailForm.email)) {
+        ElMessage.warning('邮箱格式不正确')
+        return
+    }
+    try {
+        await sendEmailCode({ email: emailForm.email })
+        ElMessage.success('验证码已发送，请查收邮箱')
+        startCountdown()
+    } catch (e) {
+        // 响应拦截器已统一提示
+    }
+}
+
+// 邮箱验证码登录
+const submitEmailForm = async (formEl) => {
+    if (!formEl) return
+    await formEl.validate((valid) => {
+        if (valid) {
+            emailLogin(emailForm).then(data => {
+                handleLoginSuccess(data)
+            }).catch(() => {})
+        }
+    })
+}
 </script>
 <style scoped lang="scss">
 /* ===== 🎨 手绘手账治愈风 — 登录页 ===== */
@@ -217,6 +357,48 @@ $rounded: "Comic Sans MS", "Segoe UI Rounded", "Hiragino Sans GB", "Microsoft Ya
             transform: rotate(15deg);
         }
 
+        /* 🎨 登录方式切换标签页 — 手账风虚线分隔 + 暖橙下划线 */
+        .tab-switch {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px dashed $warm-gray-light;
+
+            .tab-item {
+                font-family: $handwritten;
+                font-size: 16px;
+                color: $warm-gray;
+                cursor: pointer;
+                padding: 4px 12px;
+                border-radius: 10px;
+                transition: all 0.3s ease;
+                user-select: none;
+
+                &:hover {
+                    color: $warm-orange;
+                }
+
+                &.active {
+                    color: $warm-orange-dark;
+                    font-weight: bold;
+                    position: relative;
+
+                    &::after {
+                        content: '';
+                        position: absolute;
+                        bottom: -14px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        width: 40px;
+                        height: 3px;
+                        background: $warm-orange;
+                        border-radius: 2px;
+                    }
+                }
+            }
+        }
+
         /* 🎨 el-form-item label — 手写感字体 */
         :deep(.el-form-item__label) {
             font-family: $handwritten;
@@ -264,6 +446,42 @@ $rounded: "Comic Sans MS", "Segoe UI Rounded", "Hiragino Sans GB", "Microsoft Ya
 
         :deep(.el-form-item) {
             margin-bottom: 20px;
+        }
+
+        /* 🎨 验证码行 — 输入框 + 获取验证码按钮 */
+        .code-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+
+            :deep(.el-input) {
+                flex: 1;
+            }
+
+            /* 🎨 获取验证码按钮 — 手写感字体 + 暖橙描边 */
+            .send-btn {
+                flex-shrink: 0;
+                width: 130px;
+                border: 1.5px dashed $warm-orange;
+                background-color: #FFFCF5;
+                color: $warm-orange-dark;
+                font-family: $handwritten;
+                font-size: 14px;
+                border-radius: 14px;
+                transition: all 0.25s ease;
+
+                &:hover:not(:disabled) {
+                    background-color: rgba(232, 146, 124, 0.12);
+                    border-style: solid;
+                }
+
+                &:disabled {
+                    color: $warm-gray-light;
+                    border-color: $warm-gray-light;
+                    cursor: not-allowed;
+                    background-color: #F5F0E8;
+                }
+            }
         }
 
         /* 🎨 登录按钮 — 暖橙渐变 + 手写字体 + 便签立体感 */

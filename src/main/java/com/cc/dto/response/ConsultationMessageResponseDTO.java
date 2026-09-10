@@ -33,6 +33,9 @@ public class ConsultationMessageResponseDTO {
     // 使用的AI模型
     private String aiModel;
 
+    // 是否收藏 0:否 1:是
+    private Integer isFavorite;
+
     // 创建时间
     private LocalDateTime createdAt;
 

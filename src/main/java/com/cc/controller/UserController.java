@@ -1,6 +1,8 @@
 package com.cc.controller;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.cc.dto.request.EmailLoginRequestDTO;
+import com.cc.dto.request.SendCodeRequestDTO;
 import com.cc.dto.request.UserLoginRequestDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
@@ -33,6 +35,20 @@ public class UserController {
     public Result<UserLoginResponseDTO> login(@Valid @RequestBody UserLoginRequestDTO userDTO){
         UserLoginResponseDTO result = userService.login(userDTO);
         return  Result.ok(result);
+    }
+
+    // 发送邮箱登录验证码接口
+    @PostMapping("/email/send-code")
+    public Result<Void> sendEmailCode(@Valid @RequestBody SendCodeRequestDTO requestDTO) {
+        userService.sendEmailLoginCode(requestDTO.getEmail());
+        return Result.ok();
+    }
+
+    // 邮箱验证码登录接口
+    @PostMapping("/email/login")
+    public Result<UserLoginResponseDTO> emailLogin(@Valid @RequestBody EmailLoginRequestDTO requestDTO) {
+        UserLoginResponseDTO result = userService.emailLogin(requestDTO);
+        return Result.ok(result);
     }
 
     // 用户登出接口

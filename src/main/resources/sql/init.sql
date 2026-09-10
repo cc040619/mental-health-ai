@@ -633,3 +633,417 @@ INSERT INTO `user_favorite`
 VALUES (8, 2, '550e8400-e29b-41d4-a716-446655440007', '2025-11-10 19:06:27');
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ----------------------------
+-- 个人中心模块扩展：user 表新增「个人简介」字段
+-- ----------------------------
+ALTER TABLE `user`
+    ADD COLUMN `bio` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '个人简介' AFTER `birthday`;
+
+-- ----------------------------
+-- Table structure for user_browse_history 浏览历史
+-- ----------------------------
+DROP TABLE IF EXISTS `user_browse_history`;
+CREATE TABLE `user_browse_history`
+(
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '历史记录ID',
+    `user_id`    bigint                                                       NOT NULL COMMENT '用户ID',
+    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近浏览时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `user_article_history_unique` (`user_id` ASC, `article_id` ASC) USING BTREE,
+    INDEX `idx_user_id` (`user_id` ASC) USING BTREE,
+    CONSTRAINT `user_browse_history_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `user_browse_history_ibfk_2` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '用户文章浏览历史表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for assessment_scale 心理量表定义表
+-- ----------------------------
+DROP TABLE IF EXISTS `assessment_record`;
+DROP TABLE IF EXISTS `assessment_scale`;
+CREATE TABLE `assessment_scale`
+(
+    `id`                bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '量表ID',
+    `code`              varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '量表编码（PHQ-9/GAD-7/PSS-10/PSQI）',
+    `name`              varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '量表名称',
+    `category`          varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '类别：EMOTION/PERSONALITY/STRESS/SLEEP/INTERPERSONAL',
+    `description`       text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '量表简介',
+    `question_count`    int                                                           NOT NULL DEFAULT 0 COMMENT '题目数',
+    `estimated_minutes` int                                                          NOT NULL DEFAULT 5 COMMENT '预计时长(分钟)',
+    `scoring_config`    json                                                          NOT NULL COMMENT '计分配置JSON',
+    `enabled`           tinyint                                                       NOT NULL DEFAULT 1 COMMENT '是否启用 1:启用 0:停用',
+    `sort_order`        int                                                           NOT NULL DEFAULT 0 COMMENT '排序',
+    `created_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_code` (`code` ASC) USING BTREE,
+    INDEX `idx_category_enabled` (`category` ASC, `enabled` ASC) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '心理量表定义表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for assessment_record 测评作答记录表
+-- ----------------------------
+CREATE TABLE `assessment_record`
+(
+    `id`                bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '记录ID',
+    `user_id`           bigint                                                       NOT NULL COMMENT '用户ID',
+    `scale_id`          bigint                                                       NOT NULL COMMENT '量表ID',
+    `status`            varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态：IN_PROGRESS-进行中/COMPLETED-已完成',
+    `current_index`     int                                                          NOT NULL DEFAULT 0 COMMENT '当前答到第几题(从0开始)',
+    `answers`           json                                                         NULL COMMENT '答案数组 [{"questionIndex":0,"score":2}]',
+    `total_score`       decimal(6,2)                                                 NULL DEFAULT NULL COMMENT '总分',
+    `level`             varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '等级 NORMAL/MILD/MODERATE/SEVERE',
+    `dimension_scores`  json                                                         NULL COMMENT '维度得分 {"维度名":得分}',
+    `report`            json                                                         NULL COMMENT '报告内容（解读/建议/风险提示）',
+    `risk_flag`         tinyint                                                      NOT NULL DEFAULT 0 COMMENT '风险标记 1-需关注',
+    `started_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始作答时间',
+    `completed_at`      datetime                                                     NULL DEFAULT NULL COMMENT '完成时间',
+    `created_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_user_scale` (`user_id` ASC, `scale_id` ASC) USING BTREE,
+    INDEX `idx_user_created` (`user_id` ASC, `created_at` ASC) USING BTREE,
+    INDEX `idx_status_risk` (`status` ASC, `risk_flag` ASC) USING BTREE,
+    CONSTRAINT `fk_ar_scale` FOREIGN KEY (`scale_id`) REFERENCES `assessment_scale` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT `fk_ar_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '测评作答记录表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- 增量变更：AI 心理咨询模块增强（会话场景 / 会话总结 / 评价反馈 / 消息收藏 / 转人工）
+-- 幂等迁移：通过 information_schema 判断列/索引是否存在，不存在才执行 DDL；
+-- 全量重建与存量库重复执行本脚本均不会报 Duplicate column（MySQL 5.7/8.0 通用）
+-- ----------------------------
+
+-- consultation_session.scene 咨询场景
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_session' AND COLUMN_NAME = 'scene') = 0,
+    'ALTER TABLE `consultation_session` ADD COLUMN `scene` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT ''OTHER'' COMMENT ''咨询场景：EMOTION情绪疏导/RELATIONSHIP人际关系/ACADEMIC学业压力/SLEEP睡眠问题/OTHER其他'' AFTER `session_title`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- consultation_session.summary 会话总结JSON
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_session' AND COLUMN_NAME = 'summary') = 0,
+    'ALTER TABLE `consultation_session` ADD COLUMN `summary` json NULL COMMENT ''会话总结JSON{summary,coreIssues,suggestions,generatedAt}'' AFTER `last_emotion_updated_at`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- consultation_session.rating 用户评分
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_session' AND COLUMN_NAME = 'rating') = 0,
+    'ALTER TABLE `consultation_session` ADD COLUMN `rating` tinyint NULL DEFAULT NULL COMMENT ''用户评分1-5'' AFTER `summary`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- consultation_session.feedback 用户文字反馈
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_session' AND COLUMN_NAME = 'feedback') = 0,
+    'ALTER TABLE `consultation_session` ADD COLUMN `feedback` varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT ''用户文字反馈'' AFTER `rating`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- consultation_message.is_favorite 是否收藏
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_message' AND COLUMN_NAME = 'is_favorite') = 0,
+    'ALTER TABLE `consultation_message` ADD COLUMN `is_favorite` tinyint NOT NULL DEFAULT 0 COMMENT ''是否收藏 0:否 1:是'' AFTER `ai_model`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- consultation_message.favorited_at 收藏时间
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_message' AND COLUMN_NAME = 'favorited_at') = 0,
+    'ALTER TABLE `consultation_message` ADD COLUMN `favorited_at` datetime NULL DEFAULT NULL COMMENT ''收藏时间'' AFTER `is_favorite`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- idx_session_favorite 收藏列表索引（session_id + is_favorite）
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'consultation_message' AND INDEX_NAME = 'idx_session_favorite') = 0,
+    'ALTER TABLE `consultation_message` ADD INDEX `idx_session_favorite` (`session_id` ASC, `is_favorite` ASC) USING BTREE',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+
+-- ----------------------------
+-- 心理课程 / 冥想模块 6 张表
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for course 心理课程表
+-- ----------------------------
+DROP TABLE IF EXISTS `practice_checkin`;
+DROP TABLE IF EXISTS `course_comment`;
+DROP TABLE IF EXISTS `course_progress`;
+DROP TABLE IF EXISTS `course_favorite`;
+DROP TABLE IF EXISTS `course_chapter`;
+DROP TABLE IF EXISTS `course`;
+
+CREATE TABLE `course`
+(
+    `id`             bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '课程ID',
+    `title`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '课程标题',
+    `category`       varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '类别：MEDITATION/SLEEP/EMOTION/CBT/INTERPERSONAL',
+    `description`    text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '课程介绍',
+    `cover_url`      varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图',
+    `total_duration` int                                                           NOT NULL DEFAULT 0 COMMENT '总时长(秒)',
+    `learn_count`    int                                                           NOT NULL DEFAULT 0 COMMENT '学习人数',
+    `status`         tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:上架 0:下架',
+    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_category_status` (`category` ASC, `status` ASC) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '心理课程表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for course_chapter 课程章节表
+-- ----------------------------
+CREATE TABLE `course_chapter`
+(
+    `id`         bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '章节ID',
+    `course_id`  bigint                                                        NOT NULL COMMENT '课程ID',
+    `title`      varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '章节标题',
+    `audio_url`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '音频地址(静态文件或OSS)',
+    `duration`   int                                                           NOT NULL DEFAULT 0 COMMENT '时长(秒)',
+    `intro`      text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          NULL COMMENT '章节图文介绍',
+    `sort_order` int                                                          NOT NULL DEFAULT 0 COMMENT '排序',
+    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_course_order` (`course_id` ASC, `sort_order` ASC) USING BTREE,
+    CONSTRAINT `fk_chapter_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '课程章节表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for course_favorite 课程收藏表
+-- ----------------------------
+CREATE TABLE `course_favorite`
+(
+    `id`         bigint NOT NULL AUTO_INCREMENT COMMENT '收藏ID',
+    `user_id`    bigint NOT NULL COMMENT '用户ID',
+    `course_id`  bigint NOT NULL COMMENT '课程ID',
+    `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_course` (`user_id` ASC, `course_id` ASC) USING BTREE,
+    INDEX `idx_course` (`course_id` ASC) USING BTREE,
+    CONSTRAINT `fk_cf_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_cf_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '课程收藏表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for course_progress 章节学习进度表
+-- ----------------------------
+CREATE TABLE `course_progress`
+(
+    `id`                bigint   NOT NULL AUTO_INCREMENT COMMENT '进度ID',
+    `user_id`           bigint   NOT NULL COMMENT '用户ID',
+    `chapter_id`        bigint   NOT NULL COMMENT '章节ID',
+    `progress_seconds`  int      NOT NULL DEFAULT 0 COMMENT '已播秒数',
+    `duration`          int      NOT NULL DEFAULT 0 COMMENT '章节时长(秒)',
+    `is_finished`       tinyint  NOT NULL DEFAULT 0 COMMENT '是否已完成 1:是 0:否',
+    `last_played_at`    datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近播放时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_chapter` (`user_id` ASC, `chapter_id` ASC) USING BTREE,
+    INDEX `idx_user_played` (`user_id` ASC, `last_played_at` ASC) USING BTREE,
+    CONSTRAINT `fk_cp_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_cp_chapter` FOREIGN KEY (`chapter_id`) REFERENCES `course_chapter` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '章节学习进度表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_post 社区帖子表
+-- ----------------------------
+DROP TABLE IF EXISTS `community_post`;
+CREATE TABLE `community_post`
+(
+    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '帖子ID',
+    `board`        varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '板块：TREES/ACADEMIC/RELATIONSHIP/SLEEP/RECOVERY/HELP',
+    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '标题',
+    `content`      longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '正文(富文本HTML，已白名单清洗)',
+    `images`       json                                                          NULL COMMENT '图片URL数组',
+    `author_id`    bigint                                                        NOT NULL COMMENT '作者ID',
+    `is_anonymous` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
+    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:举报待审 3:已下架',
+    `like_count`    int                                                          NOT NULL DEFAULT 0 COMMENT '点赞数',
+    `comment_count` int                                                          NOT NULL DEFAULT 0 COMMENT '评论数',
+    `favorite_count` int                                                         NOT NULL DEFAULT 0 COMMENT '收藏数',
+    `view_count`   int                                                           NOT NULL DEFAULT 0 COMMENT '浏览数',
+    `is_crisis`    tinyint                                                       NOT NULL DEFAULT 0 COMMENT '危机内容标记 0:否 1:是',
+    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_board_created` (`board` ASC, `created_at` DESC) USING BTREE,
+    INDEX `idx_author` (`author_id` ASC) USING BTREE,
+    INDEX `idx_status_created` (`status` ASC, `created_at` DESC) USING BTREE,
+    CONSTRAINT `fk_post_user` FOREIGN KEY (`author_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '社区帖子表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_comment 帖子评论表(支持楼中楼)
+-- ----------------------------
+DROP TABLE IF EXISTS `community_comment`;
+CREATE TABLE `community_comment`
+(
+    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+    `post_id`      bigint                                                        NOT NULL COMMENT '帖子ID',
+    `parent_id`    bigint                                                        NULL DEFAULT NULL COMMENT '父评论ID(楼中楼，顶层为NULL，限一层)',
+    `author_id`    bigint                                                        NOT NULL COMMENT '评论人ID',
+    `content`      varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+    `is_anonymous` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
+    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除',
+    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_post_created` (`post_id` ASC, `created_at` ASC) USING BTREE,
+    INDEX `idx_parent` (`parent_id` ASC) USING BTREE,
+    CONSTRAINT `fk_comment_post` FOREIGN KEY (`post_id`) REFERENCES `community_post` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_comment_user` FOREIGN KEY (`author_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '帖子评论表(支持楼中楼)'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_like 帖子点赞表
+-- ----------------------------
+DROP TABLE IF EXISTS `community_like`;
+CREATE TABLE `community_like`
+(
+    `id`         bigint   NOT NULL AUTO_INCREMENT COMMENT '点赞ID',
+    `post_id`    bigint   NOT NULL COMMENT '帖子ID',
+    `user_id`    bigint   NOT NULL COMMENT '用户ID',
+    `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_post` (`user_id` ASC, `post_id` ASC) USING BTREE,
+    INDEX `idx_post` (`post_id` ASC) USING BTREE,
+    CONSTRAINT `fk_like_post` FOREIGN KEY (`post_id`) REFERENCES `community_post` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_like_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '帖子点赞表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_favorite 帖子收藏表
+-- ----------------------------
+DROP TABLE IF EXISTS `community_favorite`;
+CREATE TABLE `community_favorite`
+(
+    `id`         bigint   NOT NULL AUTO_INCREMENT COMMENT '收藏ID',
+    `post_id`    bigint   NOT NULL COMMENT '帖子ID',
+    `user_id`    bigint   NOT NULL COMMENT '用户ID',
+    `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_post` (`user_id` ASC, `post_id` ASC) USING BTREE,
+    INDEX `idx_post` (`post_id` ASC) USING BTREE,
+    CONSTRAINT `fk_fav_post` FOREIGN KEY (`post_id`) REFERENCES `community_post` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_fav_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '帖子收藏表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_report 举报表
+-- ----------------------------
+DROP TABLE IF EXISTS `community_report`;
+CREATE TABLE `community_report`
+(
+    `id`          bigint                                                         NOT NULL AUTO_INCREMENT COMMENT '举报ID',
+    `target_type` tinyint                                                        NOT NULL COMMENT '举报对象类型 1:帖子 2:评论',
+    `target_id`   bigint                                                         NOT NULL COMMENT '举报对象ID',
+    `reporter_id` bigint                                                         NOT NULL COMMENT '举报人ID',
+    `reason`      varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '举报原因',
+    `status`      tinyint                                                        NOT NULL DEFAULT 0 COMMENT '处理状态 0:待处理 1:已下架 2:已忽略',
+    `created_at`  datetime                                                       NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `handled_at`  datetime                                                       NULL DEFAULT NULL COMMENT '处理时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_status` (`status` ASC) USING BTREE,
+    INDEX `idx_target` (`target_type` ASC, `target_id` ASC) USING BTREE,
+    CONSTRAINT `fk_report_user` FOREIGN KEY (`reporter_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '社区举报表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for course_comment 课程评论表
+-- ----------------------------
+CREATE TABLE `course_comment`
+(
+    `id`         bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+    `course_id`  bigint                                                        NOT NULL COMMENT '课程ID',
+    `user_id`    bigint                                                        NOT NULL COMMENT '用户ID',
+    `content`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_course_created` (`course_id` ASC, `created_at` ASC) USING BTREE,
+    CONSTRAINT `fk_cc_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_cc_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '课程评论表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for practice_checkin 每日练习打卡表
+-- ----------------------------
+CREATE TABLE `practice_checkin`
+(
+    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '打卡ID',
+    `user_id`      bigint                                                        NOT NULL COMMENT '用户ID',
+    `checkin_date` date                                                          NOT NULL COMMENT '打卡日期',
+    `course_id`    bigint                                                        NOT NULL COMMENT '课程ID',
+    `chapter_id`   bigint                                                        NOT NULL COMMENT '章节ID',
+    `duration`     int                                                           NOT NULL DEFAULT 0 COMMENT '练习时长(秒)',
+    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_date` (`user_id` ASC, `checkin_date` ASC) USING BTREE,
+    CONSTRAINT `fk_pc_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_pc_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '每日练习打卡表'
+  ROW_FORMAT = DYNAMIC;
