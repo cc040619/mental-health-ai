@@ -1,12 +1,51 @@
 package com.cc.AIservice;
 
 import com.cc.enums.SessionScene;
+import com.cc.service.AiPromptService;
 
+import java.util.List;
+import java.util.Map;
+
+/**
+ * AI 系统提示词管理（表驱动 + 静态兜底）
+ *
+ * <p>提示词内容优先读 ai_prompt_template 生效版本（经 {@link AiPromptService} 静态兜底入口，
+ * Redis 缓存 60s）；DB 无生效版本回退本类静态常量——改造前后行为一致，管理端可"恢复默认"。
+ * 静态方法签名保持不变，调用方零改动。</p>
+ *
+ * @author cc
+ * @date 2026-09-06
+ */
 public class PromptManage {
-    /**
-     * 心理疏导系统提示词（基础版/通用场景）
-     * 用于AI心理疏导对话，提供专业的情感支持
-     */
+
+    // ==================== 提示词 key（ai_prompt_template.prompt_key） ====================
+
+    public static final String KEY_SYS_BASE = "SYS_BASE";
+    public static final String KEY_SCENE_EMOTION = "SCENE_EMOTION";
+    public static final String KEY_SCENE_RELATIONSHIP = "SCENE_RELATIONSHIP";
+    public static final String KEY_SCENE_ACADEMIC = "SCENE_ACADEMIC";
+    public static final String KEY_SCENE_SLEEP = "SCENE_SLEEP";
+    public static final String KEY_SCENE_OTHER = "SCENE_OTHER";
+    public static final String KEY_SUMMARY = "SUMMARY";
+    public static final String KEY_EMOTION_ANALYSIS = "EMOTION_ANALYSIS";
+
+    /** key 展示顺序（管理端左侧导航） */
+    public static final List<String> KEY_ORDER = List.of(
+            KEY_SYS_BASE, KEY_SCENE_EMOTION, KEY_SCENE_RELATIONSHIP, KEY_SCENE_ACADEMIC,
+            KEY_SCENE_SLEEP, KEY_SCENE_OTHER, KEY_SUMMARY, KEY_EMOTION_ANALYSIS);
+
+    /** key 展示名称 */
+    public static final Map<String, String> KEY_LABELS = Map.of(
+            KEY_SYS_BASE, "基础角色设定",
+            KEY_SCENE_EMOTION, "场景-情绪疏导",
+            KEY_SCENE_RELATIONSHIP, "场景-人际关系",
+            KEY_SCENE_ACADEMIC, "场景-学业压力",
+            KEY_SCENE_SLEEP, "场景-睡眠问题",
+            KEY_SCENE_OTHER, "场景-其他",
+            KEY_SUMMARY, "会话总结",
+            KEY_EMOTION_ANALYSIS, "情绪分析");
+
+    /** 心理疏导系统提示词（静态兜底默认值：基础版/通用场景） */
     public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT =
             "你是一位专业、温暖、有同理心的AI心理健康助手，专门为大学生提供心理支持和情感疏导。\n" +
                     "\n你的角色特点：\n" +
@@ -75,18 +114,6 @@ public class PromptManage {
                     "- 必须明确说明：如果持续失眠（如超过两周）或严重影响白天状态，建议前往正规医院睡眠门诊或心理科就诊\n" +
                     "- 不提供药物建议，不做医学诊断";
 
-    // 各场景完整系统提示词（基础提示词 + 场景叠加指令）
-    public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_EMOTION =
-            PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT + SCENE_SUFFIX_EMOTION;
-    public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_RELATIONSHIP =
-            PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT + SCENE_SUFFIX_RELATIONSHIP;
-    public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_ACADEMIC =
-            PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT + SCENE_SUFFIX_ACADEMIC;
-    public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_SLEEP =
-            PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT + SCENE_SUFFIX_SLEEP;
-    public static final String PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_OTHER =
-            PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT;
-
     /**
      * 会话总结系统提示词：根据对话记录输出严格 JSON
      */
@@ -120,24 +147,63 @@ public class PromptManage {
                     "\n请全程使用简体中文。";
 
     /**
-     * 按会话场景选择对应的系统提示词
+     * 按会话场景选择对应的系统提示词（DB 生效版本优先，静态常量兜底）
      *
-     * <p>流式对话每轮仅按会话 scene 取一次常量提示词，不做任何拼接或额外 AI 调用，零额外耗时。</p>
+     * <p>拼接逻辑与原版一致：基础角色提示词 + 场景叠加指令；DB 有生效版本按 key 分段替换，
+     * 无记录回退静态常量。流式对话每轮仅按会话 scene 取一次，缓存 60s，零额外 AI 调用。</p>
      *
      * @param sceneCode 场景编码（SessionScene.code）
      * @return 对应场景的系统提示词，非法值回退通用提示词
      */
     public static String getSystemPromptByScene(String sceneCode) {
+        String base = withDefault(KEY_SYS_BASE, PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT);
         SessionScene scene = SessionScene.fromCode(sceneCode);
         if (scene == null) {
-            return PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT;
+            return base;
         }
-        return switch (scene) {
-            case EMOTION -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_EMOTION;
-            case RELATIONSHIP -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_RELATIONSHIP;
-            case ACADEMIC -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_ACADEMIC;
-            case SLEEP -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_SLEEP;
-            case OTHER -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT_OTHER;
+        return base + switch (scene) {
+            case EMOTION -> withDefault(KEY_SCENE_EMOTION, SCENE_SUFFIX_EMOTION);
+            case RELATIONSHIP -> withDefault(KEY_SCENE_RELATIONSHIP, SCENE_SUFFIX_RELATIONSHIP);
+            case ACADEMIC -> withDefault(KEY_SCENE_ACADEMIC, SCENE_SUFFIX_ACADEMIC);
+            case SLEEP -> withDefault(KEY_SCENE_SLEEP, SCENE_SUFFIX_SLEEP);
+            // OTHER 场景原版即无叠加指令，DB 无记录回退空串
+            case OTHER -> withDefault(KEY_SCENE_OTHER, "");
         };
+    }
+
+    /** 基础角色提示词（AssessmentService 兜底建议入口） */
+    public static String getBaseSystemPrompt() {
+        return withDefault(KEY_SYS_BASE, PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT);
+    }
+
+    /** 会话总结系统提示词（DB 生效版本优先） */
+    public static String getSessionSummaryPrompt() {
+        return withDefault(KEY_SUMMARY, SESSION_SUMMARY_SYSTEM_PROMPT);
+    }
+
+    /** 情绪分析系统提示词（DB 生效版本优先） */
+    public static String getEmotionAnalysisPrompt() {
+        return withDefault(KEY_EMOTION_ANALYSIS, EMOTION_ANALYSIS_SYSTEM_PROMPT);
+    }
+
+    /** 恢复默认用：按 key 返回静态兜底常量内容 */
+    public static String getDefaultContent(String key) {
+        return switch (key) {
+            case KEY_SYS_BASE -> PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT;
+            case KEY_SCENE_EMOTION -> SCENE_SUFFIX_EMOTION;
+            case KEY_SCENE_RELATIONSHIP -> SCENE_SUFFIX_RELATIONSHIP;
+            case KEY_SCENE_ACADEMIC -> SCENE_SUFFIX_ACADEMIC;
+            case KEY_SCENE_SLEEP -> SCENE_SUFFIX_SLEEP;
+            case KEY_SCENE_OTHER -> "";
+            case KEY_SUMMARY -> SESSION_SUMMARY_SYSTEM_PROMPT;
+            case KEY_EMOTION_ANALYSIS -> EMOTION_ANALYSIS_SYSTEM_PROMPT;
+            default -> throw new IllegalArgumentException("非法提示词 key: " + key);
+        };
+    }
+
+    /** DB 生效版本优先（缓存 60s），无记录/异常回退静态默认 */
+    private static String withDefault(String key, String fallback) {
+        String content = AiPromptService.getActiveContentQuietly(key);
+        return content != null ? content : fallback;
     }
 }

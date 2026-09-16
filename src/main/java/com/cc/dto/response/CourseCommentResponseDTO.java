@@ -25,6 +25,12 @@ public class CourseCommentResponseDTO {
     // 评论内容
     private String content;
 
+    // 管理员回复（前台展示）
+    private String replyContent;
+
+    // 回复时间
+    private LocalDateTime replyAt;
+
     // 评论时间
     private LocalDateTime createdAt;
 

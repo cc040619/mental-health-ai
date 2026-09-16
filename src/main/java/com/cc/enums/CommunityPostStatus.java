@@ -14,7 +14,9 @@ public enum CommunityPostStatus {
     NORMAL(0, "正常"),
     DELETED(1, "已删除"),
     PENDING_REVIEW(2, "举报待审"),
-    TAKEN_DOWN(3, "已下架");
+    TAKEN_DOWN(3, "已下架"),
+    REVIEW_PENDING(4, "待审核"),
+    REJECTED(5, "已驳回");
 
     private final int code;
     private final String label;

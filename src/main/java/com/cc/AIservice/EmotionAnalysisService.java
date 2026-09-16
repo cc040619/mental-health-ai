@@ -2,12 +2,16 @@ package com.cc.AIservice;
 
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cc.dto.response.ConsultationMessageResponseDTO;
 import com.cc.dto.response.EmotionAnalysisDTO;
+import com.cc.entity.ConsultationMessage;
 import com.cc.entity.ConsultationSession;
 import com.cc.entity.EmotionDiary;
+import com.cc.mapper.ConsultationMessageMapper;
 import com.cc.mapper.ConsultationSessionMapper;
 import com.cc.mapper.EmotionDiaryMapper;
+import com.cc.service.AiConfigService;
 import com.cc.service.ConsultationMessageService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +21,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -47,7 +52,13 @@ public class EmotionAnalysisService {
     private ConsultationSessionMapper consultationSessionMapper;
 
     @Resource
+    private ConsultationMessageMapper consultationMessageMapper;
+
+    @Resource
     private EmotionDiaryMapper emotionDiaryMapper;
+
+    @Resource
+    private AiConfigService aiConfigService;
 
     /**
      * 异步分析咨询会话，结果更新到会话的 last_emotion_analysis
@@ -81,8 +92,28 @@ public class EmotionAnalysisService {
                     .id(sessionId)
                     .lastEmotionAnalysis(JSONUtil.toJsonStr(analysis))
                     .lastEmotionUpdatedAt(LocalDateTime.now())
+                    // 会话级情绪标签冗余（后台列表展示与筛选）
+                    .emotionTag(analysis.getPrimaryEmotion())
                     .build();
             consultationSessionMapper.updateById(update);
+
+            // 回写该回合最新一条用户消息的情绪标签与数值（后台情绪折线图数据源，每回合一个点；
+            // 本功能上线前的历史消息为 NULL，前端绘图时自动跳过）
+            ConsultationMessage latestUserMessage = consultationMessageMapper.selectOne(
+                    new LambdaQueryWrapper<ConsultationMessage>()
+                            .eq(ConsultationMessage::getSessionId, sessionId)
+                            .eq(ConsultationMessage::getSenderType, 1)
+                            .orderByDesc(ConsultationMessage::getId)
+                            .last("limit 1"));
+            if (latestUserMessage != null) {
+                ConsultationMessage msgUpdate = ConsultationMessage.builder()
+                        .id(latestUserMessage.getId())
+                        .emotionTag(analysis.getPrimaryEmotion())
+                        .emotionValue(analysis.getEmotionScore() != null
+                                ? BigDecimal.valueOf(analysis.getEmotionScore()) : null)
+                        .build();
+                consultationMessageMapper.updateById(msgUpdate);
+            }
             log.info("会话情绪分析完成, sessionId={}", sessionId);
         } catch (Exception e) {
             // 异步任务失败仅记录日志，不影响主流程
@@ -155,7 +186,9 @@ public class EmotionAnalysisService {
                 : content;
 
         String aiResponse = analysisChatClient.prompt()
-                .system(PromptManage.EMOTION_ANALYSIS_SYSTEM_PROMPT)
+                // per-request 模型参数覆盖（DB 配置 60s 缓存）
+                .options(aiConfigService.buildChatOptions())
+                .system(PromptManage.getEmotionAnalysisPrompt())
                 .user(text)
                 .call()
                 .content();

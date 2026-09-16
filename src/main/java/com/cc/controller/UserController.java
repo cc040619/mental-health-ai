@@ -7,10 +7,13 @@ import com.cc.dto.request.UserLoginRequestDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
 import com.cc.common.Result;
+import com.cc.service.OperationLogService;
 import com.cc.service.UserService;
+import com.cc.util.CurrentUserUtils;
 import com.cc.util.JwtTokenUtil;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @author cc
  * @date 2026-09-01
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/user")
 public class UserController {
@@ -30,10 +34,16 @@ public class UserController {
     @Resource
     private UserService userService;
 
+    @Resource
+    private OperationLogService operationLogService;
+
     // 用户登录接口
     @PostMapping("/login")
     public Result<UserLoginResponseDTO> login(@Valid @RequestBody UserLoginRequestDTO userDTO){
         UserLoginResponseDTO result = userService.login(userDTO);
+        // 登录成功显式记操作日志（不在 /api/admin 前缀内，AOP 不覆盖）
+        operationLogService.record(result.getUserInfo().getId(), result.getUserInfo().getUsername(),
+                "LOGIN", "账号密码登录", CurrentUserUtils.getCurrentClientIp());
         return  Result.ok(result);
     }
 
@@ -48,6 +58,8 @@ public class UserController {
     @PostMapping("/email/login")
     public Result<UserLoginResponseDTO> emailLogin(@Valid @RequestBody EmailLoginRequestDTO requestDTO) {
         UserLoginResponseDTO result = userService.emailLogin(requestDTO);
+        operationLogService.record(result.getUserInfo().getId(), result.getUserInfo().getUsername(),
+                "LOGIN", "邮箱验证码登录", CurrentUserUtils.getCurrentClientIp());
         return Result.ok(result);
     }
 
@@ -55,6 +67,14 @@ public class UserController {
     @PostMapping("/logout")
     public Result<Void> logout() {
         userService.logout();
+        try {
+            operationLogService.record(CurrentUserUtils.getCurrentUserId(),
+                    CurrentUserUtils.getCurrentUsername(), "LOGOUT", "退出登录",
+                    CurrentUserUtils.getCurrentClientIp());
+        } catch (Exception e) {
+            // token 已失效时跳过日志，不影响登出主流程
+            log.warn("登出操作日志记录失败: {}", e.getMessage());
+        }
         return Result.ok();
     }
 

@@ -3,12 +3,18 @@ package com.cc.service;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import cn.hutool.poi.excel.ExcelUtil;
+import cn.hutool.poi.excel.ExcelWriter;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cc.AIservice.ConsultationSummaryService;
 import com.cc.dto.request.ConsultationSessionCreateDTO;
 import com.cc.dto.request.SessionFeedbackDTO;
+import com.cc.dto.request.SessionMarkDTO;
+import com.cc.dto.response.AdminConsultationListResponseDTO;
+import com.cc.dto.response.AdminSessionDetailResponseDTO;
 import com.cc.dto.response.ConsultationSessionResponseDTO;
 import com.cc.dto.response.EmotionAnalysisDTO;
 import com.cc.dto.response.HumanHandoffResponseDTO;
@@ -26,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayOutputStream;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -119,6 +127,34 @@ public class ConsultationSessionService {
     public void deleteSession(Long sessionId, Long userId, boolean isAdmin) {
         getSessionOwned(sessionId, userId, isAdmin);
         consultationSessionMapper.deleteById(sessionId);
+    }
+
+    /**
+     * 用户管理后台：按指定 userId 分页查询该用户的全部咨询会话（管理员视角，无归属校验）
+     *
+     * @param userId   目标用户ID
+     * @param pageNum  页码
+     * @param pageSize 每页条数（上限 20）
+     * @return 分页结果（含消息统计与用户昵称）
+     */
+    public Page<ConsultationSessionResponseDTO> pageByUserIdForAdmin(Long userId, long pageNum, long pageSize) {
+        long sz = Math.min(Math.max(pageSize, 1L), 20L);
+        Page<ConsultationSession> page = new Page<>(pageNum, sz);
+        LambdaQueryWrapper<ConsultationSession> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ConsultationSession::getUserId, userId)
+                .orderByDesc(ConsultationSession::getStartedAt);
+        Page<ConsultationSession> sessionPage = consultationSessionMapper.selectPage(page, queryWrapper);
+
+        List<ConsultationSessionResponseDTO> records = sessionPage.getRecords().stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+        if (!records.isEmpty()) {
+            fillSessionStats(records);
+        }
+
+        Page<ConsultationSessionResponseDTO> resultPage = new Page<>(sessionPage.getCurrent(), sessionPage.getSize(), sessionPage.getTotal());
+        resultPage.setRecords(records);
+        return resultPage;
     }
 
     /**
@@ -262,7 +298,7 @@ public class ConsultationSessionService {
     }
 
     /**
-     * 转人工引导（模板实现）：校验归属后返回温和的共情文案与专业求助资源
+     * 转人工引导：校验归属后返回温和的共情文案、求助资源与真人咨询师预约入口
      *
      * @param sessionId 会话ID
      * @param userId    当前登录用户ID
@@ -273,10 +309,11 @@ public class ConsultationSessionService {
         getSessionOwned(sessionId, userId, isAdmin);
         log.info("用户请求转人工引导, sessionId={}", sessionId);
         return HumanHandoffResponseDTO.builder()
-                .handoffAvailable(false)
+                .handoffAvailable(true)
                 .message("谢谢你愿意把感受告诉我，我会一直在这里陪伴你。你的情况值得更专业的支持，和专业人员聊聊会很有帮助。")
                 .hotline("全国心理援助热线 12356（号码信息请以官方渠道公布为准）")
-                .suggestion("建议预约学校心理中心或正规医院心理科，与专业咨询师面对面聊聊")
+                .suggestion("平台已上线真人咨询师预约服务，可以选择擅长你当前困扰的咨询师，预约一个方便的时间深入聊聊")
+                .redirectPath("/consultants")
                 .build();
     }
 
@@ -388,6 +425,178 @@ public class ConsultationSessionService {
             }
             record.setUserNickname(nicknameMap.get(record.getUserId()));
         }
+    }
+
+    // ==================== 后台管理（咨询记录管理，敏感数据：日志不打印会话/消息内容） ====================
+
+    /**
+     * 后台会话分页：多条件筛选 + 单条聚合 SQL（时长/消息数不落库现算，禁止 N+1）
+     *
+     * <p>管理即时数据不缓存；keyword 匹配用户昵称或会话标题。</p>
+     */
+    public Map<String, Object> adminPage(String keyword, String scene, String emotionTag,
+                                         Integer ratingMin, Integer ratingMax,
+                                         String startDate, String endDate, Integer isCrisis,
+                                         Long page, Long size) {
+        long cur = (page != null && page > 0) ? page : 1L;
+        long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
+        IPage<AdminConsultationListResponseDTO> result = consultationSessionMapper.selectAdminPage(
+                new Page<>(cur, sz), trimToNull(keyword), trimToNull(scene), trimToNull(emotionTag),
+                ratingMin, ratingMax, trimToNull(startDate), trimToNull(endDate), isCrisis);
+        // 场景中文标签（历史数据 scene 为空时按 OTHER 兜底）
+        result.getRecords().forEach(dto -> {
+            SessionScene s = SessionScene.fromCode(dto.getScene());
+            dto.setSceneLabel(s != null ? s.getLabel() : SessionScene.OTHER.getLabel());
+        });
+        return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    /**
+     * 后台会话详情：会话信息 + 消息时间轴（含情绪值，折线图数据源）+ 总结 + 评价 + 标记
+     *
+     * <p>2 次查询（会话 + 消息）串行即可，不缓存（管理即时性）。</p>
+     */
+    public AdminSessionDetailResponseDTO adminDetail(Long sessionId) {
+        ConsultationSession session = consultationSessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException("会话不存在");
+        }
+        List<ConsultationMessage> messages = consultationMessageMapper.selectList(
+                new LambdaQueryWrapper<ConsultationMessage>()
+                        .eq(ConsultationMessage::getSessionId, sessionId)
+                        .orderByAsc(ConsultationMessage::getCreatedAt)
+                        .orderByAsc(ConsultationMessage::getId));
+
+        User user = userMapper.selectById(session.getUserId());
+        SessionScene scene = SessionScene.fromCode(session.getScene());
+
+        // 时长不落库：最后消息时间 - 开始时间（无消息为 null，前端显示「—」）
+        Long durationSeconds = null;
+        if (!messages.isEmpty() && session.getStartedAt() != null) {
+            LocalDateTime last = messages.get(messages.size() - 1).getCreatedAt();
+            if (last != null) {
+                durationSeconds = Duration.between(session.getStartedAt(), last).getSeconds();
+            }
+        }
+
+        List<AdminSessionDetailResponseDTO.MessageItem> items = messages.stream()
+                .map(m -> AdminSessionDetailResponseDTO.MessageItem.builder()
+                        .id(m.getId())
+                        .senderType(m.getSenderType())
+                        .content(m.getContent())
+                        .emotionTag(m.getEmotionTag())
+                        .emotionValue(m.getEmotionValue())
+                        .createdAt(m.getCreatedAt())
+                        .build())
+                .toList();
+
+        return AdminSessionDetailResponseDTO.builder()
+                .id(session.getId())
+                .userId(session.getUserId())
+                .userNickname(user != null
+                        ? StrUtil.blankToDefault(user.getNickname(), user.getUsername()) : null)
+                .sessionTitle(session.getSessionTitle())
+                .scene(scene != null ? scene.getCode() : SessionScene.OTHER.getCode())
+                .sceneLabel(scene != null ? scene.getLabel() : SessionScene.OTHER.getLabel())
+                .durationSeconds(durationSeconds)
+                .msgCount((long) messages.size())
+                .emotionTag(session.getEmotionTag())
+                .rating(session.getRating())
+                .feedback(session.getFeedback())
+                .isHighQuality(session.getIsHighQuality())
+                .isCrisis(session.getIsCrisis())
+                .markNote(session.getMarkNote())
+                .startedAt(session.getStartedAt())
+                .summaryObj(parseSummary(session))
+                .messages(items)
+                .build();
+    }
+
+    /**
+     * 标记会话（高质量/危机/备注，幂等：重复提交覆盖 note）
+     */
+    public void markSession(Long sessionId, SessionMarkDTO dto) {
+        ConsultationSession session = consultationSessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException("会话不存在");
+        }
+        ConsultationSession update = ConsultationSession.builder()
+                .id(sessionId)
+                .isHighQuality(dto.getIsHighQuality())
+                .isCrisis(dto.getIsCrisis())
+                .markNote(StringUtils.hasText(dto.getNote()) ? dto.getNote().trim() : null)
+                .build();
+        consultationSessionMapper.updateById(update);
+        // 操作日志：仅记录对象与动作，备注不打印（心理健康敏感数据）
+        log.info("会话标记已保存, sessionId={}, isHighQuality={}, isCrisis={}",
+                sessionId, dto.getIsHighQuality(), dto.getIsCrisis());
+    }
+
+    /**
+     * 导出单会话 Excel（xlsx 内存生成字节流；文件名固定 session-{id}.xlsx 不含用户信息，防泄露）
+     */
+    public byte[] exportExcel(Long sessionId) {
+        ConsultationSession session = consultationSessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException("会话不存在");
+        }
+        List<ConsultationMessage> messages = consultationMessageMapper.selectList(
+                new LambdaQueryWrapper<ConsultationMessage>()
+                        .eq(ConsultationMessage::getSessionId, sessionId)
+                        .orderByAsc(ConsultationMessage::getCreatedAt)
+                        .orderByAsc(ConsultationMessage::getId));
+        User user = userMapper.selectById(session.getUserId());
+        String nickname = user != null
+                ? StrUtil.blankToDefault(user.getNickname(), StrUtil.nullToEmpty(user.getUsername()))
+                : "";
+        SessionScene scene = SessionScene.fromCode(session.getScene());
+
+        ExcelWriter writer = ExcelUtil.getWriter(true);
+        try {
+            // 会话摘要区
+            writer.writeRow(List.of("会话ID", sessionId));
+            writer.writeRow(List.of("会话标题", StrUtil.nullToEmpty(session.getSessionTitle())));
+            writer.writeRow(List.of("用户", nickname));
+            writer.writeRow(List.of("场景", scene != null ? scene.getLabel() : SessionScene.OTHER.getLabel()));
+            writer.writeRow(List.of("开始时间",
+                    session.getStartedAt() != null
+                            ? DateUtil.format(session.getStartedAt(), "yyyy-MM-dd HH:mm:ss") : ""));
+            writer.writeRow(List.of("消息数", messages.size()));
+            writer.writeRow(List.of("情绪标签", StrUtil.nullToEmpty(session.getEmotionTag())));
+            writer.writeRow(List.of("评分", session.getRating() != null ? session.getRating() : "未评价"));
+
+            // 消息明细（List.of 不接受 null，各列均已做 null 兜底；
+            // xlsx 字符串单元格以共享字符串存储、不会按公式解析，无公式注入风险——区别于 CSV 导出）
+            writer.writeHeadRow(List.of("时间", "角色", "内容", "情绪标签", "情绪值"));
+            for (ConsultationMessage m : messages) {
+                writer.writeRow(List.of(
+                        m.getCreatedAt() != null
+                                ? DateUtil.format(m.getCreatedAt(), "yyyy-MM-dd HH:mm:ss") : "",
+                        m.getSenderType() != null && m.getSenderType() == 2 ? "AI" : "用户",
+                        truncateCell(m.getContent()),
+                        StrUtil.nullToEmpty(m.getEmotionTag()),
+                        m.getEmotionValue() != null ? m.getEmotionValue().toPlainString() : ""));
+            }
+            log.info("会话记录导出, sessionId={}, msgCount={}", sessionId, messages.size());
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            writer.flush(bo);
+            return bo.toByteArray();
+        } finally {
+            writer.close();
+        }
+    }
+
+    /** 导出单元格内容截断（≤500 字符防超长单元格） */
+    private String truncateCell(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content.length() > 500 ? content.substring(0, 500) + "…" : content;
+    }
+
+    /** 空白参数归一化为 null（SQL 动态条件用） */
+    private String trimToNull(String s) {
+        return (s != null && !s.isBlank()) ? s.trim() : null;
     }
 
     /**

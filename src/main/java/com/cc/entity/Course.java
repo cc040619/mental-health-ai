@@ -52,9 +52,29 @@ public class Course {
     @TableField("learn_count")
     private Integer learnCount;
 
-    // 状态 1:上架 0:下架
+    // 状态：0草稿/1待审核/2已发布/3已驳回/4已下架（详见 CourseStatus 枚举）
     @TableField("status")
     private Integer status;
+
+    // 讲师姓名
+    @TableField("lecturer")
+    private String lecturer;
+
+    // 适合人群
+    @TableField("target_audience")
+    private String targetAudience;
+
+    // 审核驳回原因
+    @TableField("reject_reason")
+    private String rejectReason;
+
+    // 审核时间
+    @TableField("reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    // 发布时间
+    @TableField("published_at")
+    private LocalDateTime publishedAt;
 
     // 创建时间
     @TableField("created_at")

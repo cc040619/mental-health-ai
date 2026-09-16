@@ -1,10 +1,10 @@
 <template>
-    <el-form ref="ruleFormRef" :model="formData">
+    <el-form ref="ruleFormRef" :model="formData" style="width: 100%">
         <el-row :gutter="24">
             <template v-for="item in formItemAttrs" :key="item.prop">
                 <el-col v-bind="item.col">
                     <el-form-item :label="item.label" :prop="item.prop">
-                        <component v-model="formData[item.prop]" :is="isComp(item.comp)" :placeholder="item.placeholder">
+                        <component v-model="formData[item.prop]" :is="isComp(item.comp)" :placeholder="item.placeholder" style="width: 100%">
                             <template v-if="item.comp === 'select'">
                                 <el-option label="全部" value="" />
                                 <el-option
@@ -38,7 +38,8 @@ const emit = defineEmits(['search'])
 const formItemAttrs = computed(() => {
     const { formItem } = props
     formItem.forEach(item => {
-        item.col = { xs: 24, sm: 12, md: 8, lg: 6, xl: 6 }
+        // 外部传了 col 就用外部的（允许 knowledge.vue 等页面按需调宽）
+        item.col = item.col || { xs: 24, sm: 12, md: 8, lg: 6, xl: 6 }
     })
     return formItem
 })

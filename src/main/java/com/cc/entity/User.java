@@ -83,6 +83,10 @@ public class User {
     @TableField("updated_at")
     private LocalDateTime updatedAt;
 
+    // 最后登录时间（用户管理模块用于列表/详情展示）
+    @TableField("last_login_at")
+    private LocalDateTime lastLoginAt;
+
 //    /**
 //     * 是否为普通用户
 //     */

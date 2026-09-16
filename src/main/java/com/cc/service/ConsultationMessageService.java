@@ -27,6 +27,10 @@ public class ConsultationMessageService {
     @Resource
     private ConsultationSessionMapper consultationSessionMapper;
 
+    // AI 回复敏感词过滤（入库前，开关与动作读 ai_config）
+    @Resource
+    private AiReplyFilterService aiReplyFilterService;
+
     public ConsultationMessage saveUserMessage(Long sessionId, String content, String emotion_tag) {
         // 构建用户消息实体
          ConsultationMessage userMessage = ConsultationMessage.builder()
@@ -44,6 +48,8 @@ public class ConsultationMessageService {
     }
 
     public ConsultationMessage saveAimessage(Long sessionId, String content, String aiModel) {
+        // AI 回复入库前过滤：开关 ON 时按 FILTER_ACTION 处理（BLOCK/REPLACE/LOG_ONLY），命中写拦截记录
+        content = aiReplyFilterService.filter(sessionId, content);
         ConsultationMessage message = ConsultationMessage.builder()
                 .sessionId(sessionId)
                 .senderType(2)

@@ -29,6 +29,9 @@ public class CategoryResponseDTO {
     // 分类描述
     private String description;
 
+    // 分类图标
+    private String icon;
+
     // 排序
     private Integer sortOrder;
 }

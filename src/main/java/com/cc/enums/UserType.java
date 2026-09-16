@@ -3,7 +3,7 @@ package com.cc.enums;
 import lombok.Getter;
 
 /**
- * 用户类型枚举：普通用户 / 管理员
+ * 用户类型枚举：普通用户 / 管理员 / 咨询师
  *
  * @author cc
  * @date 2026-09-01
@@ -12,7 +12,8 @@ import lombok.Getter;
 public enum UserType {
 
     USER(1, "普通用户"),
-    ADMIN(2, "管理员");
+    ADMIN(2, "管理员"),
+    CONSULTANT(3, "咨询师");
 
     private final Integer code;
     private final String description;

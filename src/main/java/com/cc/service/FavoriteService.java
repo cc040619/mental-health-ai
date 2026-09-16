@@ -36,7 +36,7 @@ public class FavoriteService {
     private KnowledgeArticleMapper knowledgeArticleMapper;
 
     /**
-     * 收藏文章（唯一索引兜底 + 业务判重）
+     * 收藏文章（唯一索引兜底 + 业务判重，同步 favorite_count +1）
      *
      * @param userId    当前登录用户ID
      * @param articleId 文章ID
@@ -64,6 +64,9 @@ public class FavoriteService {
         favorite.setCreatedAt(LocalDateTime.now());
         userFavoriteMapper.insert(favorite);
 
+        // 同步冗余计数 +1
+        knowledgeArticleMapper.incrementCount(articleId, "favorite_count", 1);
+
         log.info("用户收藏文章成功, userId={}, articleId={}", userId, articleId);
     }
 
@@ -84,7 +87,7 @@ public class FavoriteService {
     }
 
     /**
-     * 取消收藏
+     * 取消收藏（同步 favorite_count -1）
      *
      * @param userId    当前登录用户ID
      * @param articleId 文章ID
@@ -101,6 +104,10 @@ public class FavoriteService {
         if (deleted == 0) {
             throw new BusinessException("未找到对应的收藏记录");
         }
+
+        // 同步冗余计数 -1
+        knowledgeArticleMapper.incrementCount(articleId, "favorite_count", -1);
+
         log.info("用户取消收藏成功, userId={}, articleId={}", userId, articleId);
     }
 

@@ -65,3 +65,33 @@ export const getKnowledgeList = (params) => {
 export const getKnowledgeDetail = (articleId) => {
     return service.get(`/knowledge/article/${articleId}`)
 }
+
+// ==================== 文章互动（点赞/评论/阅读时长） ====================
+
+// 点赞 toggle（返回 {liked, likeCount}）
+export const toggleArticleLike = (articleId) => {
+    return service.post(`/knowledge/article/${articleId}/like`)
+}
+
+// 查询已通过评论列表（status=1，分页）
+export const getArticleComments = (articleId, params) => {
+    return service.get(`/knowledge/article/${articleId}/comments`, { params })
+}
+
+// 发表评论（过敏感词过滤，默认待审核）
+export const createArticleComment = (articleId, data) => {
+    return service.post(`/knowledge/article/${articleId}/comment`, data)
+}
+
+// 上报阅读时长（秒，1..7200，离开页面时调用）
+export const reportReadDuration = (articleId, data) => {
+    return service.put(`/knowledge/article/${articleId}/read-duration`, data)
+}
+
+// ==================== 公开配置（无需登录，白名单 key） ====================
+
+// 公开系统设置（系统名称/Logo/备案号/客服/简介；失败时页面用默认值兜底）
+export const getPublicSettings = () => service.get('/settings/public')
+
+// 公开危机干预配置（热线数组 + 干预提示文案；失败时用 config/crisis.js 常量兜底）
+export const getCrisisConfig = () => service.get('/crisis/config')

@@ -32,6 +32,7 @@ public interface CommunityPostMapper extends BaseMapper<CommunityPost> {
     String LIST_COLUMNS = """
             p.id, p.board, p.title, LEFT(p.content, 300) AS summary_raw,
             p.images, p.author_id AS authorId, p.is_anonymous AS isAnonymous,
+            p.is_top AS isTop, p.is_featured AS isFeatured,
             p.like_count AS likeCount, p.comment_count AS commentCount,
             p.favorite_count AS favoriteCount, p.view_count AS viewCount,
             p.is_crisis AS isCrisis, p.status, p.created_at AS createdAt,
@@ -46,7 +47,8 @@ public interface CommunityPostMapper extends BaseMapper<CommunityPost> {
             """;
 
     /**
-     * 信息流分页（最新/推荐共用，按创建时间倒序），仅正常帖 status=0
+     * 信息流分页（最新/推荐共用），仅正常帖 status=0；
+     * 置顶 > 加精 > 创建时间倒序（置顶不设时长，扩展路径见实体注释）
      */
     @Select("<script>" +
             "SELECT " + LIST_COLUMNS +
@@ -54,7 +56,7 @@ public interface CommunityPostMapper extends BaseMapper<CommunityPost> {
             " LEFT JOIN user u ON u.id = p.author_id" +
             " WHERE p.status = 0" +
             " <if test='board != null and board != \"\"'> AND p.board = #{board} </if>" +
-            " ORDER BY p.created_at DESC" +
+            " ORDER BY p.is_top DESC, p.is_featured DESC, p.created_at DESC" +
             "</script>")
     @Results(id = "postListMap", value = {
             @Result(column = "images", property = "images", typeHandler = JacksonTypeHandler.class),
@@ -64,6 +66,39 @@ public interface CommunityPostMapper extends BaseMapper<CommunityPost> {
                                           @Param("board") String board,
                                           @Param("userId") Long userId,
                                           @Param("showReal") int showReal);
+
+    /**
+     * 管理端帖子分页：板块/标题关键字/状态筛选（匿名帖作者屏蔽为「匿名用户」，真实身份仅举报处理可见）
+     * 走 idx_status_created / idx_board_created 索引
+     */
+    @Select("""
+            <script>
+            SELECT p.id, p.board, p.title, LEFT(p.content, 300) AS summary_raw,
+                   p.images, p.author_id AS authorId, p.is_anonymous AS isAnonymous,
+                   p.is_top AS isTop, p.is_featured AS isFeatured, p.reject_reason AS rejectReason,
+                   p.like_count AS likeCount, p.comment_count AS commentCount,
+                   p.favorite_count AS favoriteCount, p.view_count AS viewCount,
+                   p.is_crisis AS isCrisis, p.status, p.created_at AS createdAt,
+                   CASE WHEN p.is_anonymous = 1 THEN '匿名用户'
+                        ELSE COALESCE(NULLIF(u.nickname, ''), u.username) END AS authorName
+            FROM community_post p
+            LEFT JOIN user u ON u.id = p.author_id
+            <where>
+                <if test='board != null and board != ""'>AND p.board = #{board}</if>
+                <if test='status != null'>AND p.status = #{status}</if>
+                <if test='keyword != null and keyword != ""'>AND p.title LIKE CONCAT('%', #{keyword}, '%')</if>
+            </where>
+            ORDER BY p.created_at DESC
+            </script>
+            """)
+    @Results(id = "adminPostListMap", value = {
+            @Result(column = "images", property = "images", typeHandler = JacksonTypeHandler.class),
+            @Result(column = "summary_raw", property = "summary")
+    })
+    IPage<PostResponseDTO> selectAdminPostPage(Page<PostResponseDTO> page,
+                                               @Param("board") String board,
+                                               @Param("keyword") String keyword,
+                                               @Param("status") Integer status);
 
     /**
      * 热门榜候选：score = 点赞*2 + 评论*3 + 收藏*2 + 浏览*0.5，带时间衰减

@@ -10,6 +10,7 @@
                 <el-option label="待处理" :value="0" />
                 <el-option label="已下架" :value="1" />
                 <el-option label="已忽略" :value="2" />
+                <el-option label="已警告" :value="3" />
             </el-select>
             <el-button @click="loadList" style="margin-left: 12px">刷新</el-button>
         </div>
@@ -32,6 +33,12 @@
                     <span v-else class="target-comment">💬 {{ scope.row.commentContent || `评论#${scope.row.targetId}` }}</span>
                 </template>
             </el-table-column>
+            <el-table-column label="被举报人" width="130">
+                <template #default="scope">
+                    <span v-if="scope.row.authorName">{{ scope.row.authorName }}</span>
+                    <span v-else class="handled-text">—</span>
+                </template>
+            </el-table-column>
             <el-table-column prop="reporterName" label="举报人" width="130">
                 <template #default="scope">{{ scope.row.reporterName || `用户#${scope.row.reporterId}` }}</template>
             </el-table-column>
@@ -46,14 +53,11 @@
             <el-table-column label="举报时间" width="160">
                 <template #default="scope">{{ formatDateTime(scope.row.createdAt) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="120" fixed="right">
                 <template #default="scope">
-                    <template v-if="scope.row.status === 0">
-                        <el-button text type="danger" @click="handle(scope.row, 'DOWN')">下架内容</el-button>
-                        <el-button text type="info" @click="handle(scope.row, 'IGNORE')">忽略</el-button>
-                    </template>
+                    <el-button v-if="scope.row.status === 0" text type="primary" @click="openHandle(scope.row)">处理</el-button>
                     <span v-else class="handled-text">
-                        {{ scope.row.status === 1 ? '已下架' : '已忽略' }}
+                        {{ statusText(scope.row.status) }}
                         <template v-if="scope.row.handledAt"> · {{ formatDateTime(scope.row.handledAt) }}</template>
                     </span>
                 </template>
@@ -68,15 +72,38 @@
             layout="prev, pager, next"
             @current-change="onPageChange"
         />
+
+        <!-- 处理弹窗（动作单选） -->
+        <el-dialog v-model="handleVisible" title="处理举报" width="460px">
+            <el-form label-width="90px">
+                <el-form-item label="举报对象">
+                    {{ handleRow.targetType === 1 ? (handleRow.postTitle || `帖子#${handleRow.targetId}`) : (handleRow.commentContent || `评论#${handleRow.targetId}`) }}
+                </el-form-item>
+                <el-form-item label="处理动作">
+                    <el-radio-group v-model="handleAction">
+                        <el-radio value="DELETE_POST">删除内容（帖软删/评软删+计数回减）</el-radio>
+                        <el-radio value="WARN_USER">警告用户（不删除内容）</el-radio>
+                        <el-radio value="IGNORE">忽略举报</el-radio>
+                    </el-radio-group>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="handleVisible = false">取消</el-button>
+                <el-button type="primary" @click="submitHandle">确定</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import PageHead from '@/components/PageHead.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getReportList, handleReport } from '@/api/community'
 import { formatDateTime } from '@/utils/format'
+
+const router = useRouter()
 
 const loading = ref(false)
 const tableData = ref([])
@@ -85,8 +112,9 @@ const size = 10
 const total = ref(0)
 const statusFilter = ref(0) // 默认看待处理
 
-const statusText = (s) => ({ 0: '待处理', 1: '已下架', 2: '已忽略' }[s] || '未知')
-const statusTagType = (s) => ({ 0: 'danger', 1: 'warning', 2: 'info' }[s] || 'info')
+// 0待处理 1已下架 2已忽略 3已警告
+const statusText = (s) => ({ 0: '待处理', 1: '已下架', 2: '已忽略', 3: '已警告' }[s] || '未知')
+const statusTagType = (s) => ({ 0: 'danger', 1: 'warning', 2: 'info', 3: 'warning' }[s] || 'info')
 
 const loadList = () => {
     loading.value = true
@@ -116,18 +144,33 @@ const viewPost = (postId) => {
     router.push(`/community/post/${postId}`)
 }
 
-const handle = (row, action) => {
-    const isDown = action === 'DOWN'
-    ElMessageBox.confirm(
-        isDown ? '下架后该帖子/评论将对普通用户不可见，确定下架吗？' : '忽略后该举报将不再处理，确定忽略吗？',
-        isDown ? '下架确认' : '忽略确认',
-        { confirmButtonText: '确定', cancelButtonText: '取消', type: isDown ? 'warning' : 'info' }
-    ).then(() => {
-        handleReport(row.id, action).then(() => {
-            ElMessage.success(isDown ? '内容已下架' : '已忽略该举报')
+// ===== 处理弹窗 =====
+const handleVisible = ref(false)
+const handleRow = ref({})
+const handleAction = ref('DELETE_POST')
+
+const openHandle = (row) => {
+    handleRow.value = row
+    handleAction.value = 'DELETE_POST'
+    handleVisible.value = true
+}
+
+const submitHandle = () => {
+    const action = handleAction.value
+    const tips = {
+        DELETE_POST: ['删除确认', '删除后该内容对用户不可见，确定删除吗？'],
+        WARN_USER: ['警告确认', '仅警告用户，不删除内容，确定警告吗？'],
+        IGNORE: ['忽略确认', '忽略后该举报不再处理，确定忽略吗？']
+    }
+    const [title, message] = tips[action]
+    handleVisible.value = false
+    ElMessageBox.confirm(message, title, { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
+        .then(() => handleReport(handleRow.value.id, action))
+        .then(() => {
+            ElMessage.success({ DELETE_POST: '内容已删除', WARN_USER: '已警告用户', IGNORE: '已忽略该举报' }[action])
             loadList()
         })
-    }).catch(() => {})
+        .catch(() => {})
 }
 
 onMounted(() => {

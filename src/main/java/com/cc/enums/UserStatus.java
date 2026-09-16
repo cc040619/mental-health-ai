@@ -3,7 +3,7 @@ package com.cc.enums;
 import lombok.Getter;
 
 /**
- * 用户状态枚举：禁用 / 正常
+ * 用户状态枚举：禁用 / 正常 / 待审核
  *
  * @author cc
  * @date 2026-09-01
@@ -12,7 +12,9 @@ import lombok.Getter;
 public enum UserStatus {
 
     DISABLED(0, "禁用"),
-    NORMAL(1, "正常");
+    NORMAL(1, "正常"),
+    /** 注册审核开启时新用户的初始状态，管理端在用户管理中启用后转为正常 */
+    PENDING(2, "待审核");
 
     private final Integer code;
     private final String description;

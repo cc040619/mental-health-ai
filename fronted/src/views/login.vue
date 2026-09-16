@@ -171,6 +171,8 @@ const handleLoginSuccess = (data) => {
         router.push(safeRedirect)
     } else if (data.userInfo.userType === 2) {
         router.push('/back/dashboard')
+    } else if (data.userInfo.userType === 3) {
+        router.push('/consultant/dashboard')
     } else {
         router.push('/')
     }

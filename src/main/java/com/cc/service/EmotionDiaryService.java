@@ -116,4 +116,19 @@ public class EmotionDiaryService {
         }
         emotionDiaryMapper.deleteById(id);
     }
+
+    /**
+     * 用户管理后台：按指定 userId 分页查询该用户的全部情绪日记（管理员视角，无归属校验）
+     * 复用 selectAdminPage 的 userId 过滤，不传 moodScoreRange。
+     */
+    public IPage<EmotionDiaryResponseDTO> pageForAdminByUserId(Long userId, long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        EmotionDiaryPageQueryDTO queryDTO = new EmotionDiaryPageQueryDTO();
+        queryDTO.setCurrent(cur);
+        queryDTO.setSize(sz);
+        queryDTO.setUserId(userId);
+        Page<EmotionDiaryResponseDTO> p = new Page<>(cur, sz);
+        return emotionDiaryMapper.selectAdminPage(p, queryDTO);
+    }
 }

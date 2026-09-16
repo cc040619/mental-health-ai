@@ -1,595 +1,567 @@
 <template>
-  <div class="dashboard-container">
-    <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card v-if="aiData.systemOverview">
-          <div class="card-content">
-            <div class="avatar users">
-              <el-image style="width: 40px; height: 40px" :src="iconUrl1" />
-            </div>
-            <div class="info">
-              <p class="title">总用户数</p>
-              <p class="number">{{ aiData.systemOverview.totalUsers }}</p>
-              <p class="subtitle-title">活跃用户：{{ aiData.systemOverview.activeUsers }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card v-if="aiData.systemOverview">
-          <div class="card-content">
-            <div class="avatar like">
-              <el-image style="width: 40px; height: 40px" :src="iconUrl2" />
-            </div>
-            <div class="info">
-              <p class="title">情绪日志</p>
-              <p class="number">{{ aiData.systemOverview.totalDiaries }}</p>
-              <p class="subtitle-title">今日新增：{{ aiData.systemOverview.todayNewDiaries }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card v-if="aiData.systemOverview">
-          <div class="card-content">
-            <div class="avatar comments">
-              <el-image style="width: 40px; height: 40px" :src="iconUrl3" />
-            </div>
-            <div class="info">
-              <p class="title">咨询会话</p>
-              <p class="number">{{ aiData.systemOverview.totalSessions }}</p>
-              <p class="subtitle-title">今日新增：{{ aiData.systemOverview.todayNewSessions }}</p>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card v-if="aiData.systemOverview">
-          <div class="card-content">
-            <div class="avatar smile">
-              <el-image style="width: 40px; height: 40px" :src="iconUrl4" />
-            </div>
-            <div class="info">
-              <p class="title">平均情绪</p>
-              <p class="number">{{ aiData.systemOverview.avgMoodScore }}/10</p>
-              <p class="subtitle-title">情绪健康指数</p>
+  <div class="dashboard" v-loading="loading.overview">
+    <!-- 顶部：时间范围切换 -->
+    <div class="dash-toolbar">
+      <PageHead title="数据看板" />
+      <div class="dash-toolbar__controls">
+        <el-radio-group v-model="range" @change="onRangePreset">
+          <el-radio-button label="TODAY">今日</el-radio-button>
+          <el-radio-button label="7D">近7天</el-radio-button>
+          <el-radio-button label="30D">近30天</el-radio-button>
+        </el-radio-group>
+        <el-date-picker
+          v-model="customRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :clearable="false"
+          class="dash-date-picker"
+          @change="onCustomRange"
+        />
+        <el-button type="primary" :loading="anyLoading" @click="loadAll">刷新</el-button>
+      </div>
+    </div>
+
+    <!-- 六项核心指标卡 -->
+    <el-row :gutter="16" class="metric-row">
+      <el-col v-for="m in metrics" :key="m.key" :xs="12" :sm="12" :md="8">
+        <el-card shadow="hover" class="metric-card" :body-style="{ padding: '18px 20px' }">
+          <div class="metric-card__inner">
+            <el-icon :size="32" :color="m.color"><component :is="m.icon" /></el-icon>
+            <div class="metric-info">
+              <p class="metric-label">{{ m.label }}</p>
+              <p class="metric-value">{{ m.item ? m.item.value : '—' }}</p>
+              <p class="metric-rate">
+                <span>环比 <b :class="rateClass(m.item?.mom)">{{ fmtRate(m.item?.mom) }}</b></span>
+                <span>同比 <b :class="rateClass(m.item?.yoy)">{{ fmtRate(m.item?.yoy) }}</b></span>
+              </p>
             </div>
           </div>
         </el-card>
       </el-col>
     </el-row>
-    <el-row style="margin-top: 20px;" :gutter="20">
-      <el-col :span="12">
-        <el-card style="width: 100%">
-          <template #header>
-            <div class="card-header">
-              情绪趋势分析
-            </div>
+
+    <!-- 用户增长 -->
+    <ChartCard title="用户增长" :loading="loading.userTrend" :is-empty="isEmptyUserTrend" :height="320">
+      <template #extra>
+        <el-radio-group v-model="granularity" size="small" @change="loadUserTrend">
+          <el-radio-button label="day">按日</el-radio-button>
+          <el-radio-button label="month">按月</el-radio-button>
+        </el-radio-group>
+      </template>
+      <div :ref="setChartEl('userGrowth')" class="chart-fill"></div>
+    </ChartCard>
+
+    <!-- 咨询统计 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="12">
+        <ChartCard title="会话数趋势" :loading="loading.consultation" :is-empty="isEmptySessionTrend" :height="320">
+          <template #extra>
+            <el-tag v-if="consultation" type="info" effect="plain" size="small">
+              平均时长 {{ consultation.avgDurationMinutes ?? 0 }} 分钟
+            </el-tag>
           </template>
-          <div class="chart-content">
-            <div ref="emotionChartRef" style="width: 100%; height:300px"></div>
-          </div>
-        </el-card>
+          <div :ref="setChartEl('sessionTrend')" class="chart-fill"></div>
+        </ChartCard>
       </el-col>
-      <el-col :span="12">
-        <el-card style="width: 100%">
-          <template #header>
-            <div class="card-header">
-              咨询会话统计
-            </div>
-          </template>
-          <div class="chart-content">
-            <div v-if="aiData.consultationStats" class="consultation-stats">
-              <div class="stat-item">
-                <div class="stat-label">总会话数</div>
-                <div class="stat-value">{{ aiData.consultationStats.totalSessions }}</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">平均时长</div>
-                <div class="stat-value">{{ aiData.consultationStats.avgDurationMinutes }}</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-label">活跃用户</div>
-                <div class="stat-value">{{ aiData.systemOverview.activeUsers }}</div>
-              </div>
-            </div>
-            <div ref="consultationChartRef" style="width: 100%; height:260px"></div>
-          </div>
-        </el-card>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <ChartCard title="咨询主题分布" :loading="loading.consultation" :is-empty="isEmptyScenes" :height="320">
+          <div :ref="setChartEl('scenePie')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <ChartCard title="消息情绪分布" :loading="loading.consultation" :is-empty="isEmptyMsgEmotions" :height="320">
+          <div :ref="setChartEl('emotionPie')" class="chart-fill"></div>
+        </ChartCard>
       </el-col>
     </el-row>
-    <el-row style="margin-top: 20px;">
-      <el-card style="width: 100%">
-        <template #header>
-          <div class="card-header">
-            用户活跃度趋势
-          </div>
-        </template>
-        <div class="chart-content">
-          <div ref="userActivityChartRef" style="width: 100%; height:300px"></div>
+
+    <!-- 测评分析 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="12">
+        <ChartCard title="量表测评次数" :loading="loading.assessment" :is-empty="isEmptyScales" :height="300">
+          <div :ref="setChartEl('scaleBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="12">
+        <ChartCard title="测评结果等级分布" :loading="loading.assessment" :is-empty="isEmptyLevels" :height="300">
+          <div :ref="setChartEl('levelBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+    </el-row>
+    <div class="chart-row-block">
+      <ChartCard
+        title="高危用户预警（仅管理员可见，信息已脱敏）"
+        :loading="loading.assessment"
+        :is-empty="false"
+        :height="420"
+      >
+        <div class="table-fill">
+          <el-table
+            :data="assessment?.riskUsers || []"
+            size="small"
+            height="100%"
+            :row-class-name="riskRowClass"
+          >
+            <el-table-column prop="nickname" label="用户昵称" min-width="120" />
+            <el-table-column prop="phone" label="手机号" min-width="130">
+              <template #default="{ row }">{{ row.phone || '—' }}</template>
+            </el-table-column>
+            <el-table-column prop="riskType" label="风险类型" min-width="120">
+              <template #default="{ row }">
+                <el-tag type="danger" effect="plain" size="small">{{ row.riskType }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="最高等级" width="100">
+              <template #default="{ row }">
+                <el-tag :type="levelTagType(row.riskLevel)" size="small">
+                  {{ levelMeta(row.riskLevel).label }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="lastTime" label="最近测评时间" min-width="150">
+              <template #default="{ row }">{{ row.lastTime || '—' }}</template>
+            </el-table-column>
+            <el-table-column prop="count" label="次数" width="80" />
+            <template #empty>暂无高危预警</template>
+          </el-table>
         </div>
-      </el-card>
+      </ChartCard>
+    </div>
+
+    <!-- 情绪大数据 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="8">
+        <ChartCard title="全站情绪分布" :loading="loading.emotion" :is-empty="isEmptyEmotionDist" :height="340">
+          <div :ref="setChartEl('emotionDonut')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="16">
+        <ChartCard title="情绪趋势热力图（近30天）" :loading="loading.emotion" :is-empty="isEmptyHeatmap" :height="340">
+          <div :ref="setChartEl('emotionHeatmap')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+    </el-row>
+
+    <!-- 内容排行 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="8">
+        <ChartCard title="文章浏览 TOP10" :loading="loading.content" :is-empty="isEmptyArticles" :height="380">
+          <div :ref="setChartEl('articleBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="8">
+        <ChartCard title="课程学习 TOP10" :loading="loading.content" :is-empty="isEmptyCourses" :height="380">
+          <div :ref="setChartEl('courseBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="8">
+        <ChartCard title="热门帖子 TOP10" :loading="loading.content" :is-empty="isEmptyPosts" :height="380">
+          <div :ref="setChartEl('postBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+    </el-row>
+
+    <!-- 预约统计 -->
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="10">
+        <ChartCard title="预约量趋势" :loading="loading.appointment" :is-empty="isEmptyAppointTrend" :height="320">
+          <div :ref="setChartEl('appointTrend')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="8">
+        <ChartCard title="咨询师预约排行" :loading="loading.appointment" :is-empty="isEmptyRanking" :height="320">
+          <div :ref="setChartEl('consultantBar')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
+      <el-col :xs="24" :lg="6">
+        <ChartCard title="预约完成率" :loading="loading.appointment" :is-empty="false" :height="320">
+          <div :ref="setChartEl('rateGauge')" class="chart-fill"></div>
+        </ChartCard>
+      </el-col>
     </el-row>
   </div>
 </template>
+
 <script setup>
-import { getAnalyticsOverview } from '@/api/admin'
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
+import { User, UserFilled, ChatDotRound, Document, Calendar } from '@element-plus/icons-vue'
+import PageHead from '@/components/PageHead.vue'
+import ChartCard from '@/components/ChartCard.vue'
+import {
+  getDashboardOverview,
+  getUserTrend,
+  getConsultationStats,
+  getAssessmentStats,
+  getEmotionStats,
+  getContentStats,
+  getAppointmentStats
+} from '@/api/admin'
+import { lineChart, barChart, pieChart, heatmapChart, horizBarChart, gaugeChart } from '@/utils/echartsOptions'
 
-// 统计图片引入
-const iconUrl1 = new URL('@/assets/images/users.png', import.meta.url).href
-const iconUrl2 = new URL('@/assets/images/like.png', import.meta.url).href
-const iconUrl3 = new URL('@/assets/images/comments.png', import.meta.url).href
-const iconUrl4 = new URL('@/assets/images/smile.png', import.meta.url).href
+// ===== 时间范围状态 =====
+const range = ref('7D')
+const customRange = ref([])
+const granularity = ref('day')
 
-const aiData = ref({})
+// ===== 各图表组独立 loading / 数据 =====
+const loading = reactive({
+  overview: false,
+  userTrend: false,
+  consultation: false,
+  assessment: false,
+  emotion: false,
+  content: false,
+  appointment: false
+})
+const anyLoading = computed(() => Object.values(loading).some(Boolean))
 
-// 初始化图标
-const initCharts = () => {
-  initEmotionChart()
-  initConsultationChart()
-  initUserActivityChart()
+const overview = ref(null)
+const userTrend = ref(null)
+const consultation = ref(null)
+const assessment = ref(null)
+const emotion = ref(null)
+const content = ref(null)
+const appointment = ref(null)
+
+// 等级编码 -> 中文标签
+const LEVEL_META = {
+  NORMAL: { label: '正常' },
+  MILD: { label: '轻度' },
+  MODERATE: { label: '中度' },
+  SEVERE: { label: '重度' }
+}
+const LEVEL_COLORS = { NORMAL: '#67C23A', MILD: '#E6A23C', MODERATE: '#E6A23C', SEVERE: '#F56C6C' }
+
+function levelMeta(code) {
+  return LEVEL_META[code] || { label: code || '—' }
+}
+function levelTagType(code) {
+  return { NORMAL: 'success', MILD: 'warning', MODERATE: 'warning', SEVERE: 'danger' }[code] || 'info'
 }
 
-// 情绪趋势
-let emotionChart = null
-const emotionChartRef = ref(null)
-const initEmotionChart = () => {
-  if (!emotionChartRef.value) return
-  // 销毁现有的图表
-  if (emotionChart) {
-    emotionChart.dispose()
-  }
-  // 创建echarts实例
-  emotionChart = echarts.init(emotionChartRef.value)
-  // 获取情绪趋势的数据
-  const TrendData = aiData.value.emotionTrend
-  // 配置项
-  const option = {
-    title: {
-      text: '情绪趋势分析',
-      textStyle: {
-        color: '#2d3436',
-        fontSize: 16,
-        fontWeight: 600
-      },
-      left: 'center',
-      top: 10
-    },
-    tooltip: {
-      trigger: 'axis',
-      borderColor: '#fab1a0',
-      borderWidth: 1,
-      textStyle: {
-        color: '#2d3436'
-      }
-    },
-    legend: {
-      data: ['平均情绪评分', '记录数量'],
-      top: 40
-    },
-    grid: { // 控制容器样式
-      left: '3%',
-      right: '4%',
-      top: 80,
-      bottom: '3%'
-    },
-    xAxis: {
-      type: 'category',
-      data: TrendData.map(item => item.date),
-      axisLine: {
-        lineStyle: {
-          color: '#2d3436'
-        }
-      }
-    },
-    yAxis: [{
-      type: 'value',
-      name: '情绪评分',
-      position: 'left',
-      axisLine: {
-        lineStyle: {
-          color: '#2d3436'
-        }
-      }
-    }, {
-      type: 'value',
-      name: '记录数量',
-      position: 'right',
-      axisLine: {
-        lineStyle: {
-          color: '#2d3436'
-        }
-      }
-    }],
-    series: [{
-      name: '平均情绪评分',
-      type: 'line',
-      data: TrendData.map(item => item.avgMoodScore),
-      smooth: true,
-      lineStyle: {
-        width: 3,
-        color: '#faebaf'
-      },
-      itemStyle: {
-        color: '#faebaf'
-      }
-    },
-    {
-      name: '记录数量',
-      type: 'line',
-      data: TrendData.map(item => item.recordCount),
-      smooth: true,
-      lineStyle: {
-        width: 3,
-        color: '#eeb5a3'
-      },
-      itemStyle: {
-        color: '#eeb5a3'
-      }
-    }]
-  }
-
-  emotionChart.setOption(option)
+function riskRowClass({ row }) {
+  return row.riskLevel === 'SEVERE' ? 'severe-row' : ''
 }
 
-// 咨询会话统计
-let consultationChart = null
-const consultationChartRef = ref(null)
-const initConsultationChart = () => {
-  if (!consultationChartRef.value) return
-  // 销毁现有的图表
-  if (consultationChart) {
-    consultationChart.dispose()
-  }
-  // 创建echarts实例
-  consultationChart = echarts.init(consultationChartRef.value)
-  // 获取数据
-  const dailyTrend = aiData.value.consultationStats.dailyTrend
-  const option = {
-    title: {
-      text: '咨询活动统计',
-      textStyle: {
-        fontSize: 16,
-        fontWeight: 600,
-        color: '#2d3436'
-      },
-      left: 'center',
-      top: 10
-    },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#fab1a0',
-      borderWidth: 1,
-      textStyle: {
-        color: '#2d3436'
-      }
-    },
-    legend: {
-      data: ['会话数量', '参与用户数'],
-      top: 40,
-      textStyle: {
-        color: '#636e72'
-      }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: 80,
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: dailyTrend.map(item => item.date),
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
-        }
-      },
-      axisLabel: {
-        color: '#636e72'
-      }
-    },
-    yAxis: {
-      type: 'value',
-      axisLabel: {
-        color: '#636e72'
-      },
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
-        }
-      },
-      splitLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.1)'
-        }
-      }
-    },
-    series: [
-      {
-        name: '会话数量',
-        type: 'bar',
-        data: dailyTrend.map(item => item.sessionCount),
-        itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#74b9ff' },
-              { offset: 1, color: '#0984e3' }
-            ]
-          }
-        },
-        barWidth: '40%'
-      },
-      {
-        name: '参与用户数',
-        type: 'bar',
-        data: dailyTrend.map(item => item.userCount),
-        itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#fdcb6e' },
-              { offset: 1, color: '#f39c12' }
-            ]
-          }
-        },
-        barWidth: '40%'
-      }
-    ]
-  }
-  consultationChart.setOption(option)
+// ===== 指标卡 =====
+const METRIC_DEFS = [
+  { key: 'totalUsers', label: '用户总数', icon: User, color: '#409EFF' },
+  { key: 'todayNewUsers', label: '今日新增', icon: UserFilled, color: '#67C23A' },
+  { key: 'activeUsers', label: '活跃用户', icon: UserFilled, color: '#E6A23C' },
+  { key: 'sessions', label: '咨询会话', icon: ChatDotRound, color: '#409EFF' },
+  { key: 'assessments', label: '测评完成', icon: Document, color: '#67C23A' },
+  { key: 'appointments', label: '预约数', icon: Calendar, color: '#E6A23C' }
+]
+const metrics = computed(() =>
+  METRIC_DEFS.map(def => ({ ...def, item: overview.value?.[def.key] || null }))
+)
+
+function fmtRate(v) {
+  if (v === null || v === undefined) return '—'
+  if (v === 0) return '0.0%'
+  return `${v > 0 ? '↑' : '↓'}${Math.abs(v).toFixed(1)}%`
+}
+function rateClass(v) {
+  if (v === null || v === undefined) return 'is-na'
+  if (v > 0) return 'is-up'
+  if (v < 0) return 'is-down'
+  return 'is-flat'
 }
 
-// 用户活跃度分析
-let userActivityChart = null
-const userActivityChartRef = ref(null)
-const initUserActivityChart = () => {
-  if (!userActivityChartRef.value) return
-  // 销毁现有的图表
-  if (userActivityChart) {
-    userActivityChart.dispose()
+// ===== 空态判定 =====
+const isEmptyUserTrend = computed(() => !userTrend.value?.newUsers?.some(v => v > 0))
+const isEmptySessionTrend = computed(
+  () => !consultation.value?.dailyTrend?.some(i => i.sessionCount > 0 || i.userCount > 0)
+)
+const isEmptyScenes = computed(() => !consultation.value?.sceneDistribution?.length)
+const isEmptyMsgEmotions = computed(() => !consultation.value?.emotionDistribution?.length)
+const isEmptyScales = computed(() => !assessment.value?.scaleCounts?.length)
+const isEmptyLevels = computed(() => !assessment.value?.levelDistribution?.some(i => i.value > 0))
+const isEmptyEmotionDist = computed(() => !emotion.value?.emotionDistribution?.length)
+const isEmptyHeatmap = computed(() => !emotion.value?.heatmap?.data?.length)
+const isEmptyArticles = computed(() => !content.value?.articles?.length)
+const isEmptyCourses = computed(() => !content.value?.courses?.length)
+const isEmptyPosts = computed(() => !content.value?.posts?.length)
+const isEmptyAppointTrend = computed(() => !appointment.value?.dailyTrend?.some(i => i.value > 0))
+const isEmptyRanking = computed(() => !appointment.value?.consultantRanking?.length)
+
+// ===== 参数构建 =====
+function buildParams() {
+  const params = { range: range.value }
+  if (range.value === 'CUSTOM' && customRange.value?.length === 2) {
+    params.startDate = customRange.value[0]
+    params.endDate = customRange.value[1]
   }
-  // 创建echarts实例
-  userActivityChart = echarts.init(userActivityChartRef.value)
-  // 获取数据
-  const activityData = aiData.value.userActivity
-  const option = {
-    title: {
-      text: '用户活跃度趋势',
-      textStyle: {
-        fontSize: 16,
-        fontWeight: 600,
-        color: '#2d3436'
-      },
-      left: 'center',
-      top: 10
-    },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#fab1a0',
-      borderWidth: 1,
-      textStyle: {
-        color: '#2d3436'
-      }
-    },
-    legend: {
-      data: ['活跃用户', '新增用户', '日记用户', '咨询用户'],
-      top: 40,
-      textStyle: {
-        color: '#636e72'
-      }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: 80,
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: activityData.map(item => item.date),
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
-        }
-      },
-      axisLabel: {
-        color: '#636e72'
-      }
-    },
-    yAxis: {
-      type: 'value',
-      axisLabel: {
-        color: '#636e72'
-      },
-      axisLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
-        }
-      },
-      splitLine: {
-        lineStyle: {
-          color: 'rgba(244, 162, 97, 0.1)'
-        }
-      }
-    },
-    series: [
-      {
-        name: '活跃用户',
-        type: 'line',
-        data: activityData.map(item => item.activeUsers),
-        smooth: true,
-        lineStyle: {
-          width: 3,
-          color: '#a29bfe'
-        },
-        itemStyle: {
-          color: '#a29bfe'
-        },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(162, 155, 254, 0.4)' },
-              { offset: 1, color: 'rgba(162, 155, 254, 0.1)' }
-            ]
-          }
-        }
-      },
-      {
-        name: '新增用户',
-        type: 'line',
-        data: activityData.map(item => item.newUsers),
-        smooth: true,
-        lineStyle: {
-          width: 3,
-          color: '#fdcb6e'
-        },
-        itemStyle: {
-          color: '#fdcb6e'
-        }
-      },
-      {
-        name: '日记用户',
-        type: 'line',
-        data: activityData.map(item => item.diaryUsers),
-        smooth: true,
-        lineStyle: {
-          width: 3,
-          color: '#00b894'
-        },
-        itemStyle: {
-          color: '#00b894'
-        }
-      },
-      {
-        name: '咨询用户',
-        type: 'line',
-        data: activityData.map(item => item.consultationUsers),
-        smooth: true,
-        lineStyle: {
-          width: 3,
-          color: '#fab1a0'
-        },
-        itemStyle: {
-          color: '#fab1a0'
-        }
-      }
-    ]
+  return params
+}
+
+async function loadGroup(key, fn, apply) {
+  loading[key] = true
+  try {
+    apply(await fn())
+  } catch {
+    // 单组失败保持空态，不影响其他图表
+  } finally {
+    loading[key] = false
   }
-  userActivityChart.setOption(option)
+}
+
+function loadOverview() {
+  return loadGroup('overview', () => getDashboardOverview(buildParams()), res => { overview.value = res })
+}
+function loadUserTrend() {
+  return loadGroup('userTrend', () => getUserTrend({ ...buildParams(), granularity: granularity.value }), res => {
+    userTrend.value = res
+    renderUserTrend(res)
+  })
+}
+function loadConsultation() {
+  return loadGroup('consultation', () => getConsultationStats(buildParams()), res => {
+    consultation.value = res
+    renderConsultation(res)
+  })
+}
+function loadAssessment() {
+  return loadGroup('assessment', () => getAssessmentStats(buildParams()), res => {
+    assessment.value = res
+    renderAssessment(res)
+  })
+}
+function loadEmotion() {
+  return loadGroup('emotion', () => getEmotionStats(buildParams()), res => {
+    emotion.value = res
+    renderEmotion(res)
+  })
+}
+function loadContent() {
+  return loadGroup('content', () => getContentStats(), res => {
+    content.value = res
+    renderContent(res)
+  })
+}
+function loadAppointment() {
+  return loadGroup('appointment', () => getAppointmentStats(buildParams()), res => {
+    appointment.value = res
+    renderAppointment(res)
+  })
+}
+
+function loadAll() {
+  return Promise.all([
+    loadOverview(), loadUserTrend(), loadConsultation(), loadAssessment(),
+    loadEmotion(), loadContent(), loadAppointment()
+  ])
+}
+
+// ===== 范围切换 =====
+function onRangePreset() {
+  customRange.value = []
+  loadAll()
+}
+function onCustomRange(val) {
+  if (!val || val.length !== 2) return
+  const start = new Date(val[0])
+  const end = new Date(val[1])
+  if (start > end) {
+    ElMessage.warning('开始日期不能晚于结束日期')
+    customRange.value = []
+    return
+  }
+  const days = Math.round((end - start) / 86400000) + 1
+  if (days > 366) {
+    ElMessage.warning('查询时间跨度不能超过1年')
+    customRange.value = []
+    return
+  }
+  range.value = 'CUSTOM'
+  loadAll()
+}
+
+// ===== ECharts 实例复用 =====
+const chartDom = {}
+const chartInsts = {}
+
+function setChartEl(key) {
+  return el => { if (el) chartDom[key] = el }
+}
+function setChart(key, option) {
+  const el = chartDom[key]
+  if (!el) return
+  if (!chartInsts[key]) chartInsts[key] = echarts.init(el)
+  if (option) chartInsts[key].setOption(option, true)
+  else chartInsts[key].clear()
+}
+function resizeAll() {
+  Object.values(chartInsts).forEach(c => c.resize())
+}
+
+// ===== 各图表渲染 =====
+function renderUserTrend(d) {
+  if (!d?.dates?.length) { setChart('userGrowth', null); return }
+  const rotate = granularity.value === 'day' && d.dates.length > 15 ? 40 : 0
+  setChart('userGrowth', lineChart(d.dates, [
+    { name: '新增用户', data: d.newUsers, color: '#409EFF', area: true },
+    { name: '累计用户', data: d.cumulativeUsers, color: '#67C23A', yIndex: 1, dashed: true }
+  ], { rotate }))
+}
+function renderConsultation(d) {
+  const trend = d?.dailyTrend || []
+  if (trend.length) {
+    setChart('sessionTrend', lineChart(
+      trend.map(i => i.date),
+      [
+        { name: '会话数', data: trend.map(i => i.sessionCount), color: '#409EFF', area: true },
+        { name: '参与用户', data: trend.map(i => i.userCount), color: '#67C23A' }
+      ],
+      { rotate: trend.length > 15 ? 40 : 0 }
+    ))
+  } else { setChart('sessionTrend', null) }
+  setChart('scenePie', d?.sceneDistribution?.length ? pieChart(d.sceneDistribution) : null)
+  setChart('emotionPie', d?.emotionDistribution?.length ? pieChart(d.emotionDistribution) : null)
+}
+function renderAssessment(d) {
+  const scales = d?.scaleCounts || []
+  setChart('scaleBar', scales.length
+    ? barChart(scales.map(i => i.name), [{ name: '测评次数', data: scales.map(i => i.value) }], { rotate: scales.length > 4 ? 30 : 0 })
+    : null)
+  const levels = d?.levelDistribution || []
+  if (levels.length) {
+    setChart('levelBar', barChart(
+      levels.map(i => i.label),
+      [{ name: '人数', data: levels.map(i => ({ value: i.value, itemStyle: { color: LEVEL_COLORS[i.level] || '#409EFF' } })) }]
+    ))
+  } else { setChart('levelBar', null) }
+}
+function renderEmotion(d) {
+  setChart('emotionDonut', d?.emotionDistribution?.length ? pieChart(d.emotionDistribution, { ring: true }) : null)
+  setChart('emotionHeatmap', d?.heatmap?.dates?.length && d.heatmap.data?.length ? heatmapChart(d.heatmap) : null)
+}
+function renderContent(d) {
+  setChart('articleBar', d?.articles?.length ? horizBarChart(d.articles, '#409EFF') : null)
+  setChart('courseBar', d?.courses?.length ? horizBarChart(d.courses, '#67C23A') : null)
+  setChart('postBar', d?.posts?.length ? horizBarChart(d.posts, '#E6A23C') : null)
+}
+function renderAppointment(d) {
+  const trend = d?.dailyTrend || []
+  setChart('appointTrend', trend.length
+    ? lineChart(trend.map(i => i.name), [{ name: '预约量', data: trend.map(i => i.value), color: '#409EFF', area: true }], { legend: false, rotate: trend.length > 15 ? 40 : 0 })
+    : null)
+  setChart('consultantBar', d?.consultantRanking?.length ? horizBarChart(d.consultantRanking, '#67C23A') : null)
+  setChart('rateGauge', gaugeChart(d?.completionRate ?? null))
 }
 
 onMounted(() => {
-  getAnalyticsOverview().then(res => {
-    console.log(res)
-    aiData.value = res
-    initCharts()
-  })
+  loadAll()
+  window.addEventListener('resize', resizeAll)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeAll)
+  Object.values(chartInsts).forEach(c => c.dispose())
 })
 </script>
+
 <style lang="scss" scoped>
-.dashboard-container {
-  .card-content {
+.dashboard {
+  padding: 0 4px;
+}
+
+.dash-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  &__controls {
     display: flex;
     align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+}
 
-    .avatar {
-      margin-right: 12px;
-      width: 60px;
-      height: 60px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+.dash-date-picker {
+  width: 250px;
+}
 
-      &.users {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      }
+// ===== 指标卡 =====
+.metric-row {
+  margin-top: 16px;
+}
 
-      &.like {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      }
+.metric-card {
+  margin-bottom: 16px;
 
-      &.comments {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      }
-
-      &.smile {
-        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-      }
-    }
-
-    .info {
-      .title {
-        font-size: 14px;
-        color: #7f8c8d;
-        margin-bottom: 4px;
-      }
-
-      .value {
-        font-size: 24px;
-        font-weight: 700;
-        color: #2c3e50;
-        margin-bottom: 4px
-      }
-
-      .subtitle-title {
-        font-size: 12px;
-        color: #95a5a6;
-      }
-    }
+  &__inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
   }
 
-  .chart-content {
-    padding: 20px;
-    height: 300px;
-    position: relative;
+  .metric-label {
+    margin: 0 0 4px;
+    font-size: 13px;
+    color: #909399;
+  }
 
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
+  .metric-value {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 700;
+    color: #303133;
+    line-height: 1.1;
+  }
+
+  .metric-rate {
+    margin: 0;
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: #C0C4CC;
+
+    b {
+      font-weight: 600;
+      margin-left: 2px;
+
+      &.is-up { color: #67C23A; }
+      &.is-down { color: #F56C6C; }
+      &.is-flat, &.is-na { color: #C0C4CC; font-weight: 400; }
     }
+  }
+}
 
-    .consultation-stats {
-      display: flex;
-      justify-content: space-around;
-      margin-bottom: 20px;
+// ===== 图表区 =====
+.chart-row {
+  margin-top: 16px;
+}
 
-      .stat-item {
-        text-align: center;
+.chart-row-block {
+  margin-top: 16px;
+}
 
-        .stat-label {
-          font-size: 12px;
-          color: #7f8c8d;
-          margin-bottom: 4px;
-        }
+.chart-row .el-col {
+  margin-bottom: 16px;
+}
 
-        .stat-value {
-          font-size: 18px;
-          font-weight: 600;
-          color: #2c3e50;
-        }
-      }
+.chart-fill,
+.table-fill {
+  position: absolute;
+  inset: 0;
+}
+
+// ===== 高危表格 =====
+:deep(.el-table) {
+  .severe-row {
+    background: #FEF0F0;
+
+    td.el-table__cell {
+      background: #FEF0F0;
     }
   }
 }

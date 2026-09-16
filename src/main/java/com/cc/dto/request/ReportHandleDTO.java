@@ -13,8 +13,8 @@ import lombok.Data;
 @Data
 public class ReportHandleDTO {
 
-    // 处理动作：DOWN-下架内容  IGNORE-忽略举报
+    // 处理动作：DELETE_POST-删除内容(联动软删)  WARN_USER-警告用户(不删内容)  IGNORE-忽略举报
     @NotBlank(message = "处理动作不能为空")
-    @Pattern(regexp = "DOWN|IGNORE", message = "处理动作仅支持 DOWN 或 IGNORE")
+    @Pattern(regexp = "DELETE_POST|WARN_USER|IGNORE", message = "处理动作仅支持 DELETE_POST、WARN_USER 或 IGNORE")
     private String action;
 }

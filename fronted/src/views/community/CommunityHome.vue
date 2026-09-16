@@ -77,6 +77,8 @@
         <div class="post-main">
           <div class="post-text">
             <div class="post-tags">
+              <span v-if="post.isTop === 1" class="top-tag">📌 置顶</span>
+              <span v-if="post.isFeatured === 1" class="featured-tag">⭐ 精选</span>
               <span class="board-tag">{{ boardEmoji(post.board) }} {{ post.boardLabel }}</span>
               <span v-if="post.isCrisis === 1" class="warm-tag">🤍 温暖陪伴中</span>
             </div>
@@ -352,6 +354,14 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
   .board-tag {
     font-size: 12px; color: $primary; background: $primary-light;
     border: 1px dashed $primary; border-radius: 10px; padding: 2px 10px;
+  }
+  .top-tag {
+    font-size: 12px; color: #fff; background: linear-gradient(135deg, $primary, $primary-dark);
+    border-radius: 10px; padding: 2px 10px; font-weight: 600;
+  }
+  .featured-tag {
+    font-size: 12px; color: #9b7a52; background: rgba(247,232,166,0.7);
+    border: 1px solid #d9bd7a; border-radius: 10px; padding: 2px 10px;
   }
   .warm-tag {
     font-size: 12px; color: #9b7a52; background: rgba(247,232,166,0.5);

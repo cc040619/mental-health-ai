@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,6 +34,8 @@ public class KnowledgeCategory {
     private Long parentId;
 
     // 分类名称
+    @NotBlank(message = "分类名称不能为空")
+    @Size(max = 100, message = "分类名称长度不能超过100个字符")
     @TableField("category_name")
     private String categoryName;
 
@@ -41,6 +45,10 @@ public class KnowledgeCategory {
 
     // 分类描述
     private String description;
+
+    // 分类图标(emoji 或图片 URL)
+    @Size(max = 200, message = "分类图标长度不能超过200个字符")
+    private String icon;
 
     // 排序
     @TableField("sort_order")

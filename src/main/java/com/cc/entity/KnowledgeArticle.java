@@ -63,6 +63,18 @@ public class KnowledgeArticle {
     @TableField("read_count")
     private Integer readCount;
 
+    // 点赞数(冗余字段,由 article_like 表维护)
+    @TableField("like_count")
+    private Integer likeCount;
+
+    // 已通过评论数(冗余字段,由 article_comment 表维护,仅统计 status=1)
+    @TableField("comment_count")
+    private Integer commentCount;
+
+    // 收藏数(冗余字段,由 user_favorite 表维护)
+    @TableField("favorite_count")
+    private Integer favoriteCount;
+
     // 状态 0:草稿 1:已发布 2:已下线
     private Integer status;
 

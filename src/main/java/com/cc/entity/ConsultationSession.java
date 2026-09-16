@@ -47,6 +47,23 @@ public class ConsultationSession {
     @TableField("last_emotion_updated_at")
     private LocalDateTime lastEmotionUpdatedAt;
 
+    // 最近主情绪标签（冗余，情绪分析写路径同步写入，供后台列表展示与筛选）
+    @Size(max = 50, message = "情绪标签长度不能超过50个字符")
+    @TableField("emotion_tag")
+    private String emotionTag;
+
+    // 高质量标记 0-否 1-是（AI训练参考，人工运营标记）
+    @TableField("is_high_quality")
+    private Integer isHighQuality;
+
+    // 危机会话标记 0-否 1-是（运营关注标记，与用户端自动危机识别/干预卡解耦）
+    @TableField("is_crisis")
+    private Integer isCrisis;
+
+    // 标记备注
+    @TableField("mark_note")
+    private String markNote;
+
     // 会话总结(JSON格式：summary/coreIssues/suggestions/generatedAt)
     @TableField("summary")
     private String summary;

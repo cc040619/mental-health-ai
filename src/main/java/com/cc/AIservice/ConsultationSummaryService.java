@@ -7,6 +7,7 @@ import com.cc.dto.response.ConsultationMessageResponseDTO;
 import com.cc.dto.response.SessionSummaryResponseDTO;
 import com.cc.entity.ConsultationSession;
 import com.cc.mapper.ConsultationSessionMapper;
+import com.cc.service.AiConfigService;
 import com.cc.service.ConsultationMessageService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,9 @@ public class ConsultationSummaryService {
 
     @Resource
     private ConsultationSessionMapper consultationSessionMapper;
+
+    @Resource
+    private AiConfigService aiConfigService;
 
     /**
      * 异步生成会话总结并落库
@@ -113,7 +117,9 @@ public class ConsultationSummaryService {
                 : transcript;
 
         String aiResponse = statelessChatClient.prompt()
-                .system(PromptManage.SESSION_SUMMARY_SYSTEM_PROMPT)
+                // per-request 模型参数覆盖（DB 配置 60s 缓存）
+                .options(aiConfigService.buildChatOptions())
+                .system(PromptManage.getSessionSummaryPrompt())
                 .user("对话记录如下：\n" + context)
                 .call()
                 .content();

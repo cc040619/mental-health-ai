@@ -1,16 +1,25 @@
 package com.cc.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.cc.dto.request.ChapterSaveDTO;
+import com.cc.dto.request.ChapterSortDTO;
 import com.cc.dto.request.CourseCommentCreateDTO;
 import com.cc.dto.request.CourseProgressUpdateDTO;
+import com.cc.dto.request.CourseSaveDTO;
 import com.cc.dto.request.PracticeCheckinDTO;
+import com.cc.dto.response.AdminChapterResponseDTO;
+import com.cc.dto.response.AdminCourseCommentResponseDTO;
+import com.cc.dto.response.AdminCourseDetailResponseDTO;
+import com.cc.dto.response.AdminCourseListResponseDTO;
 import com.cc.dto.response.CheckinCalendarResponseDTO;
 import com.cc.dto.response.CourseCommentResponseDTO;
 import com.cc.dto.response.CourseDetailResponseDTO;
 import com.cc.dto.response.CourseListResponseDTO;
 import com.cc.dto.response.CourseMineResponseDTO;
+import com.cc.dto.response.CourseStatsResponseDTO;
 import com.cc.dto.response.DailyPracticeResponseDTO;
 import com.cc.entity.Course;
 import com.cc.entity.CourseChapter;
@@ -20,6 +29,7 @@ import com.cc.entity.CourseProgress;
 import com.cc.entity.PracticeCheckin;
 import com.cc.entity.User;
 import com.cc.enums.CourseCategory;
+import com.cc.enums.CourseStatus;
 import com.cc.exception.BusinessException;
 import com.cc.mapper.CourseChapterMapper;
 import com.cc.mapper.CourseCommentMapper;
@@ -30,16 +40,19 @@ import com.cc.mapper.PracticeCheckinMapper;
 import com.cc.mapper.UserMapper;
 import com.cc.service.convert.CourseConvert;
 import com.cc.util.CurrentUserUtils;
+import com.cc.util.SensitiveWordFilter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +88,8 @@ public class CourseService {
     private UserMapper userMapper;
     @Resource
     private CourseConvert convert;
+    @Resource
+    private SensitiveWordFilter sensitiveWordFilter;
 
     // ==================== 课程广场 ====================
 
@@ -88,7 +103,8 @@ public class CourseService {
         long sz = (size != null && size > 0) ? Math.min(size, 50L) : 12L;
 
         LambdaQueryWrapper<Course> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Course::getStatus, 1);
+        // ponytail: 状态迁移后用户端只展示 PUBLISHED(2)，原 status=1 升级为 2
+        wrapper.eq(Course::getStatus, CourseStatus.PUBLISHED.getCode());
         if (category != null && !category.isBlank()) {
             if (CourseCategory.fromCode(category) == null) {
                 throw new BusinessException("课程类别不存在");
@@ -338,7 +354,7 @@ public class CourseService {
 
         // 取所有正念冥想类上架课程的章节（按课程id + sortOrder 排序后扁平化）
         LambdaQueryWrapper<Course> courseWrapper = new LambdaQueryWrapper<>();
-        courseWrapper.eq(Course::getStatus, 1).eq(Course::getCategory, CourseCategory.MEDITATION.getCode())
+        courseWrapper.eq(Course::getStatus, CourseStatus.PUBLISHED.getCode()).eq(Course::getCategory, CourseCategory.MEDITATION.getCode())
                 .orderByAsc(Course::getId);
         List<Course> meditationCourses = courseMapper.selectList(courseWrapper);
         if (meditationCourses.isEmpty()) {
@@ -534,10 +550,11 @@ public class CourseService {
 
     // ==================== 工具方法 ====================
 
-    /** 获取上架课程，不存在/下架抛业务异常 */
+    /** 获取已发布课程，不存在/未发布抛业务异常 */
     private Course getOnlineCourse(Long courseId) {
         Course course = courseMapper.selectById(courseId);
-        if (course == null || course.getStatus() == null || course.getStatus() != 1) {
+        if (course == null || course.getStatus() == null
+                || !course.getStatus().equals(CourseStatus.PUBLISHED.getCode())) {
             throw new BusinessException("课程不存在或已下架");
         }
         return course;
@@ -573,4 +590,439 @@ public class CourseService {
 
     // ponytail: 我的课程一次性加载所有相关课程+章节+进度（4 查询），
     // 数据规模上来时可改为按完成度分页查询，当前最短可用路径。
+
+    // ==================== 管理端：课程列表 / 详情 / 创建 / 编辑 / 审核 ====================
+
+    /**
+     * 管理端课程列表：聚合 章节数/总时长 一次 SQL 完成，禁止 N+1
+     * <p>size ≤ 20，命中 idx_status_created 索引</p>
+     */
+    public Map<String, Object> adminPage(String keyword, String category, Integer status,
+                                         long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+
+        // 状态入参校验
+        if (status != null && CourseStatus.fromCode(status) == null) {
+            throw new BusinessException("课程状态不合法");
+        }
+        // 类别入参校验
+        if (StringUtils.hasText(category) && CourseCategory.fromCode(category) == null) {
+            throw new BusinessException("课程类别不存在");
+        }
+
+        Page<AdminCourseListResponseDTO> pageParam = new Page<>(cur, sz);
+        IPage<AdminCourseListResponseDTO> result = courseMapper.selectAdminPage(
+                pageParam, trimKw(keyword), StringUtils.hasText(category) ? category : null, status);
+        List<AdminCourseListResponseDTO> records = result.getRecords().stream()
+                .map(convert::toAdminListDTO)
+                .toList();
+        return Map.of("records", records, "total", result.getTotal());
+    }
+
+    /**
+     * 管理端各状态课程计数（前端 Tab 数字）
+     */
+    public Map<Integer, Long> adminStatusCount() {
+        Map<Integer, Long> counts = new HashMap<>();
+        // ponytail: 五态初始化为 0，避免前端 Tab 显示空白
+        for (CourseStatus s : CourseStatus.values()) {
+            counts.put(s.getCode(), 0L);
+        }
+        for (Map<String, Object> row : courseMapper.selectStatusCount()) {
+            counts.put(((Number) row.get("status")).intValue(),
+                    ((Number) row.get("cnt")).longValue());
+        }
+        return counts;
+    }
+
+    /**
+     * 管理端课程详情：基本信息 + 章节列表（按 sortOrder 升序）
+     */
+    public AdminCourseDetailResponseDTO adminDetail(Long courseId) {
+        Course course = mustGetCourse(courseId);
+        List<CourseChapter> chapters = chapterMapper.selectByCourseId(courseId);
+        return convert.toAdminDetailDTO(course, chapters);
+    }
+
+    /**
+     * 管理端创建课程：默认 status=DRAFT(0)，totalDuration=0（章节增删后重算）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Long adminSave(CourseSaveDTO dto) {
+        validateSaveDTO(dto);
+        Course course = Course.builder()
+                .title(dto.getTitle().trim())
+                .category(dto.getCategory())
+                .description(StringUtils.hasText(dto.getDescription()) ? dto.getDescription().trim() : null)
+                .coverUrl(dto.getCoverUrl())
+                .lecturer(StringUtils.hasText(dto.getLecturer()) ? dto.getLecturer().trim() : null)
+                .targetAudience(StringUtils.hasText(dto.getTargetAudience()) ? dto.getTargetAudience().trim() : null)
+                .totalDuration(0)
+                .learnCount(0)
+                .status(CourseStatus.DRAFT.getCode())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        courseMapper.insert(course);
+        log.info("管理员创建课程: courseId={}, title={}", course.getId(), course.getTitle());
+        return course.getId();
+    }
+
+    /**
+     * 管理端编辑基本信息：所有状态均可编辑（草稿/待审核/已发布/已驳回/已下架），
+     * 编辑后保持原状态不变，不强制重新审核。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void adminUpdate(Long courseId, CourseSaveDTO dto) {
+        mustGetCourse(courseId);
+        validateSaveDTO(dto);
+        courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                .eq(Course::getId, courseId)
+                .set(Course::getTitle, dto.getTitle().trim())
+                .set(Course::getCategory, dto.getCategory())
+                .set(Course::getDescription, StringUtils.hasText(dto.getDescription()) ? dto.getDescription().trim() : null)
+                .set(Course::getCoverUrl, dto.getCoverUrl())
+                .set(Course::getLecturer, StringUtils.hasText(dto.getLecturer()) ? dto.getLecturer().trim() : null)
+                .set(Course::getTargetAudience, StringUtils.hasText(dto.getTargetAudience()) ? dto.getTargetAudience().trim() : null)
+                .set(Course::getUpdatedAt, LocalDateTime.now()));
+        log.info("管理员编辑课程基本信息: courseId={}", courseId);
+    }
+
+    /**
+     * 提交审核：仅 DRAFT/REJECTED 可提交，转 PENDING 并清驳回原因
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void submitReview(Long courseId) {
+        Course course = mustGetCourse(courseId);
+        CourseStatus cur = CourseStatus.fromCode(course.getStatus());
+        if (cur != CourseStatus.DRAFT && cur != CourseStatus.REJECTED) {
+            throw new BusinessException("仅草稿/已驳回课程可提交审核");
+        }
+        courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                .eq(Course::getId, courseId)
+                .set(Course::getStatus, CourseStatus.PENDING.getCode())
+                .set(Course::getRejectReason, null)
+                .set(Course::getUpdatedAt, LocalDateTime.now()));
+        log.info("课程提交审核: courseId={}", courseId);
+    }
+
+    /**
+     * 审核：仅 PENDING 可走此接口。approve=true → PUBLISHED + publishedAt；
+     * approve=false → REJECTED，必填原因 ≤500
+     * <p>审核通过后用户端列表/详情立即可见（用户端查 PUBLISHED 状态）</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewCourse(Long courseId, Boolean approve, String rejectReason) {
+        Course course = mustGetCourse(courseId);
+        CourseStatus cur = CourseStatus.fromCode(course.getStatus());
+        if (cur != CourseStatus.PENDING) {
+            throw new BusinessException("仅待审核课程可执行审核操作");
+        }
+        if (Boolean.TRUE.equals(approve)) {
+            courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                    .eq(Course::getId, courseId)
+                    .set(Course::getStatus, CourseStatus.PUBLISHED.getCode())
+                    .set(Course::getPublishedAt, LocalDateTime.now())
+                    .set(Course::getReviewedAt, LocalDateTime.now())
+                    .set(Course::getRejectReason, null)
+                    .set(Course::getUpdatedAt, LocalDateTime.now()));
+            log.info("课程审核通过(已发布): courseId={}", courseId);
+        } else {
+            if (!StringUtils.hasText(rejectReason)) {
+                throw new BusinessException("驳回原因不能为空");
+            }
+            if (rejectReason.length() > 500) {
+                throw new BusinessException("驳回原因不能超过500字");
+            }
+            courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                    .eq(Course::getId, courseId)
+                    .set(Course::getStatus, CourseStatus.REJECTED.getCode())
+                    .set(Course::getRejectReason, rejectReason.trim())
+                    .set(Course::getReviewedAt, LocalDateTime.now())
+                    .set(Course::getUpdatedAt, LocalDateTime.now()));
+            log.info("课程审核驳回: courseId={}", courseId);
+        }
+    }
+
+    /**
+     * 上架/下架：仅 PUBLISHED ↔ OFFLINE 互转
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStatus(Long courseId, Integer targetStatus) {
+        Course course = mustGetCourse(courseId);
+        CourseStatus cur = CourseStatus.fromCode(course.getStatus());
+        CourseStatus target = CourseStatus.fromCode(targetStatus);
+        if (target == null || (target != CourseStatus.PUBLISHED && target != CourseStatus.OFFLINE)) {
+            throw new BusinessException("目标状态只能为 已发布/已下架");
+        }
+        if (cur == CourseStatus.PUBLISHED && target == CourseStatus.OFFLINE) {
+            courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                    .eq(Course::getId, courseId)
+                    .set(Course::getStatus, CourseStatus.OFFLINE.getCode())
+                    .set(Course::getUpdatedAt, LocalDateTime.now()));
+            log.info("课程下架: courseId={}", courseId);
+        } else if (cur == CourseStatus.OFFLINE && target == CourseStatus.PUBLISHED) {
+            courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                    .eq(Course::getId, courseId)
+                    .set(Course::getStatus, CourseStatus.PUBLISHED.getCode())
+                    .set(Course::getUpdatedAt, LocalDateTime.now()));
+            log.info("课程上架: courseId={}", courseId);
+        } else {
+            throw new BusinessException("仅 已发布 ↔ 已下架 可互转");
+        }
+    }
+
+    // ==================== 管理端：章节 CRUD + 排序 ====================
+
+    /**
+     * 新增章节：sortOrder=当前最大值+1，重算 course.totalDuration
+     * <p>音频/视频二选一必填其一</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public AdminChapterResponseDTO addChapter(Long courseId, ChapterSaveDTO dto) {
+        mustGetCourse(courseId);
+        validateChapterDTO(dto);
+        Integer maxSort = chapterMapper.selectMaxSortOrder(courseId);
+        CourseChapter chapter = CourseChapter.builder()
+                .courseId(courseId)
+                .title(dto.getTitle().trim())
+                .audioUrl(dto.getAudioUrl())
+                .videoUrl(dto.getVideoUrl())
+                .duration(dto.getDuration() == null ? 0 : dto.getDuration())
+                .intro(StringUtils.hasText(dto.getIntro()) ? dto.getIntro() : null)
+                .sortOrder((maxSort == null ? 0 : maxSort) + 1)
+                .createdAt(LocalDateTime.now())
+                .build();
+        chapterMapper.insert(chapter);
+        recomputeTotalDuration(courseId);
+        log.info("新增章节: courseId={}, chapterId={}", courseId, chapter.getId());
+        return convert.toAdminChapterDTO(chapter);
+    }
+
+    /**
+     * 编辑章节：校验属于该课程，重算 course.totalDuration
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateChapter(Long chapterId, ChapterSaveDTO dto) {
+        CourseChapter chapter = mustGetChapter(chapterId);
+        validateChapterDTO(dto);
+        chapterMapper.update(null, new LambdaUpdateWrapper<CourseChapter>()
+                .eq(CourseChapter::getId, chapterId)
+                .set(CourseChapter::getTitle, dto.getTitle().trim())
+                .set(CourseChapter::getAudioUrl, dto.getAudioUrl())
+                .set(CourseChapter::getVideoUrl, dto.getVideoUrl())
+                .set(CourseChapter::getDuration, dto.getDuration() == null ? 0 : dto.getDuration())
+                .set(CourseChapter::getIntro, StringUtils.hasText(dto.getIntro()) ? dto.getIntro() : null));
+        recomputeTotalDuration(chapter.getCourseId());
+        log.info("编辑章节: chapterId={}, courseId={}", chapterId, chapter.getCourseId());
+    }
+
+    /**
+     * 删除章节：外键 fk_cp_chapter ON DELETE CASCADE 自动级联清理 course_progress，
+     * 重算 course.totalDuration（无孤儿数据）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteChapter(Long chapterId) {
+        CourseChapter chapter = mustGetChapter(chapterId);
+        Long courseId = chapter.getCourseId();
+        chapterMapper.deleteById(chapterId);
+        // ponytail: course_progress.chapter_id 外键 ON DELETE CASCADE，DB 自动级联清理，
+        // 无需手动删除进度；如未建外键级联则需先 delete progress 再 delete chapter
+        recomputeTotalDuration(courseId);
+        log.info("删除章节: chapterId={}, courseId={}", chapterId, courseId);
+    }
+
+    /**
+     * 批量重排：单事务，一次性更新整课 sortOrder
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void sortChapters(ChapterSortDTO dto) {
+        if (dto.getItems() == null || dto.getItems().isEmpty()) {
+            return;
+        }
+        for (ChapterSortDTO.SortItem item : dto.getItems()) {
+            if (item.getId() == null || item.getSortOrder() == null) {
+                throw new BusinessException("排序列表项 id/sortOrder 不能为空");
+            }
+            chapterMapper.updateSortOrder(item.getId(), item.getSortOrder());
+        }
+        // 排序不影响时长，无需重算
+        log.info("批量重排章节: count={}", dto.getItems().size());
+    }
+
+    // ==================== 管理端：学习数据 ====================
+
+    /**
+     * 课程学习数据：学习人数 / 完成率 / 平均学习时长 / 章节热力图
+     * <p>所有指标单 SQL 聚合，禁止逐章逐用户循环</p>
+     * <p>兜底同步：查询时重算 course.total_duration，保证存量数据正确</p>
+     */
+    public CourseStatsResponseDTO getCourseStats(Long courseId) {
+        mustGetCourse(courseId);
+        // 兜底同步总时长：SUM(章节duration) → course.total_duration
+        recomputeTotalDuration(courseId);
+
+        List<CourseChapter> chapters = chapterMapper.selectByCourseId(courseId);
+        Integer totalChapterCnt = chapters.size();
+
+        // 学习人数：有任意章节进度记录的去重用户数（对应「正在学习」中有该课程的用户）
+        Integer learnerCountRaw = progressMapper.selectLearnerCount(courseId);
+        int learnerCount = learnerCountRaw == null ? 0 : learnerCountRaw;
+
+        Integer completedUser = totalChapterCnt > 0
+                ? progressMapper.selectCompletedUserCount(courseId, totalChapterCnt) : 0;
+        double completionRate = learnerCount > 0
+                ? Math.round(completedUser * 1000.0 / learnerCount) / 10.0 : 0.0;
+
+        Integer avgProgress = progressMapper.selectAvgProgressSeconds(courseId);
+
+        // 章节热力图：单 SQL JOIN 聚合
+        List<Map<String, Object>> rows = progressMapper.selectChapterHeatmap(courseId);
+        // 按 chapters 顺序补齐无学习记录的章节
+        Map<Long, Map<String, Object>> rowMap = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object idObj = row.get("chapter_id");
+            if (idObj != null) {
+                rowMap.put(((Number) idObj).longValue(), row);
+            }
+        }
+        List<CourseStatsResponseDTO.ChapterHeatmapItem> heatmap = new ArrayList<>();
+        for (CourseChapter ch : chapters) {
+            Map<String, Object> row = rowMap.get(ch.getId());
+            int chLearners = row != null ? ((Number) row.get("learner_count")).intValue() : 0;
+            int chFinish = row != null ? ((Number) row.get("finish_count")).intValue() : 0;
+            int chAvg = row != null ? (int) Math.round(((Number) row.get("avg_progress")).doubleValue()) : 0;
+            heatmap.add(CourseStatsResponseDTO.ChapterHeatmapItem.builder()
+                    .chapterId(ch.getId())
+                    .title(ch.getTitle())
+                    .sortOrder(ch.getSortOrder())
+                    .learnerCount(chLearners)
+                    .finishCount(chFinish)
+                    .avgProgress(chAvg)
+                    .build());
+        }
+
+        return CourseStatsResponseDTO.builder()
+                .learnerCount(learnerCount)
+                .completionRate(completionRate)
+                .avgProgressSeconds(avgProgress == null ? 0 : avgProgress)
+                .chapterHeatmap(heatmap)
+                .build();
+    }
+
+    // ==================== 管理端：评论管理 ====================
+
+    /**
+     * 管理端评论分页：keyword 匹配评论内容（中缀 LIKE），命中 idx_course_created
+     */
+    public Map<String, Object> adminListComments(Long courseId, String keyword,
+                                                long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        Page<AdminCourseCommentResponseDTO> pageParam = new Page<>(cur, sz);
+        IPage<AdminCourseCommentResponseDTO> result = commentMapper.selectAdminPage(
+                pageParam, courseId, trimKw(keyword));
+        List<AdminCourseCommentResponseDTO> records = result.getRecords().stream()
+                .peek(dto -> dto.setHasReply(StringUtils.hasText(dto.getReplyContent())))
+                .toList();
+        return Map.of("records", records, "total", result.getTotal());
+    }
+
+    /**
+     * 管理员回复评论：单级，覆盖式更新 reply_content + reply_at
+     * <p>管理员回复仍过敏感词过滤（防误操作 + 统一口径）</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void replyComment(Long commentId, String content) {
+        CourseComment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new BusinessException("评论不存在");
+        }
+        if (!StringUtils.hasText(content)) {
+            throw new BusinessException("回复内容不能为空");
+        }
+        if (content.length() > 500) {
+            throw new BusinessException("回复内容不能超过500字");
+        }
+        sensitiveWordFilter.checkSensitive(content);
+        commentMapper.update(null, new LambdaUpdateWrapper<CourseComment>()
+                .eq(CourseComment::getId, commentId)
+                .set(CourseComment::getReplyContent, content.trim())
+                .set(CourseComment::getReplyAt, LocalDateTime.now()));
+        log.info("管理员回复评论: commentId={}, courseId={}", commentId, comment.getCourseId());
+    }
+
+    /**
+     * 删除评论：物理删（前台若有回复一并删除，因为回复挂在评论行上）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void adminDeleteComment(Long commentId) {
+        CourseComment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new BusinessException("评论不存在");
+        }
+        commentMapper.deleteById(commentId);
+        log.info("管理员删除评论: commentId={}, courseId={}", commentId, comment.getCourseId());
+    }
+
+    // ==================== 管理端：内部工具方法 ====================
+
+    private Course mustGetCourse(Long courseId) {
+        Course course = courseMapper.selectById(courseId);
+        if (course == null) {
+            throw new BusinessException("课程不存在");
+        }
+        return course;
+    }
+
+    private CourseChapter mustGetChapter(Long chapterId) {
+        CourseChapter chapter = chapterMapper.selectById(chapterId);
+        if (chapter == null) {
+            throw new BusinessException("章节不存在");
+        }
+        return chapter;
+    }
+
+    /**
+     * 课程基本信息保存 DTO 校验：类别合法、URL 长度限制
+     */
+    private void validateSaveDTO(CourseSaveDTO dto) {
+        if (CourseCategory.fromCode(dto.getCategory()) == null) {
+            throw new BusinessException("课程类别不存在");
+        }
+        if (dto.getCoverUrl() != null && dto.getCoverUrl().length() > 500) {
+            throw new BusinessException("封面URL不能超过500字");
+        }
+    }
+
+    /**
+     * 章节 DTO 校验：音频/视频二选一必填其一（OSS 上传产物 URL）
+     */
+    private void validateChapterDTO(ChapterSaveDTO dto) {
+        boolean hasAudio = StringUtils.hasText(dto.getAudioUrl());
+        boolean hasVideo = StringUtils.hasText(dto.getVideoUrl());
+        if (!hasAudio && !hasVideo) {
+            throw new BusinessException("音频或视频地址至少填写一项");
+        }
+        if (dto.getDuration() != null && dto.getDuration() < 0) {
+            throw new BusinessException("时长不能为负数");
+        }
+    }
+
+    /**
+     * 重算课程总时长：SUM(chapter.duration) → update course.total_duration
+     * <p>章节增/删/改在 @Transactional 内调用，保证一致性</p>
+     */
+    private void recomputeTotalDuration(Long courseId) {
+        Integer sum = chapterMapper.selectTotalDuration(courseId);
+        courseMapper.update(null, new LambdaUpdateWrapper<Course>()
+                .eq(Course::getId, courseId)
+                .set(Course::getTotalDuration, sum == null ? 0 : sum)
+                .set(Course::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    private String trimKw(String keyword) {
+        return StringUtils.hasText(keyword) ? keyword.trim() : null;
+    }
 }

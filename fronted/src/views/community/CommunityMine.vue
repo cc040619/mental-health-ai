@@ -28,7 +28,10 @@
         <div class="card-main">
           <div class="card-tags">
             <span class="board-tag">{{ boardEmoji(p.board) }} {{ p.boardLabel }}</span>
-            <span :class="['status-tag', statusClass(p.status)]">{{ statusText(p.status) }}</span>
+            <el-tooltip v-if="p.status === 5 && p.rejectReason" :content="`驳回原因：${p.rejectReason}`" placement="top">
+              <span :class="['status-tag', statusClass(p.status)]">{{ statusText(p.status) }} ⓘ</span>
+            </el-tooltip>
+            <span v-else :class="['status-tag', statusClass(p.status)]">{{ statusText(p.status) }}</span>
           </div>
           <h3 class="card-title">{{ p.title }}</h3>
           <p class="card-summary">{{ p.summary || '（图片分享）' }}</p>
@@ -116,7 +119,9 @@ const statusMap = {
   0: { text: '正常', cls: 'st-normal' },
   1: { text: '已删除', cls: 'st-deleted' },
   2: { text: '举报待审核', cls: 'st-pending' },
-  3: { text: '已下架', cls: 'st-down' }
+  3: { text: '已下架', cls: 'st-down' },
+  4: { text: '发布审核中', cls: 'st-pending' },
+  5: { text: '审核未通过', cls: 'st-down' }
 }
 const statusText = (s) => statusMap[s]?.text || '正常'
 const statusClass = (s) => statusMap[s]?.cls || 'st-normal'

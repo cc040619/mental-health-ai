@@ -1,6 +1,7 @@
 package com.cc.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cc.AIservice.PromptManage;
@@ -10,6 +11,14 @@ import com.cc.dto.request.AssessmentStartDTO;
 import com.cc.dto.request.AssessmentSubmitDTO;
 import com.cc.dto.request.AssessmentRecordPageQueryDTO;
 import com.cc.dto.request.AssessmentAnswerItemDTO;
+import com.cc.dto.request.InterventionDTO;
+import com.cc.dto.request.ScaleQuestionsDTO;
+import com.cc.dto.request.ScaleSaveDTO;
+import com.cc.dto.response.AdminRecordResponseDTO;
+import com.cc.dto.response.AdminReportDetailResponseDTO;
+import com.cc.dto.response.AdminScaleDetailResponseDTO;
+import com.cc.dto.response.AdminScaleListResponseDTO;
+import com.cc.dto.response.AlertResponseDTO;
 import com.cc.dto.response.AssessmentRecordDetailDTO;
 import com.cc.dto.response.AssessmentRecordResponseDTO;
 import com.cc.dto.response.AssessmentScaleDetailDTO;
@@ -17,7 +26,10 @@ import com.cc.dto.response.AssessmentScaleResponseDTO;
 import com.cc.dto.response.AssessmentTrendResponseDTO;
 import com.cc.entity.AssessmentRecord;
 import com.cc.entity.AssessmentScale;
+import com.cc.enums.AssessmentCategory;
+import com.cc.enums.AssessmentLevel;
 import com.cc.enums.AssessmentStatus;
+import com.cc.enums.InterventionStatus;
 import com.cc.exception.BusinessException;
 import com.cc.mapper.AssessmentRecordMapper;
 import com.cc.mapper.AssessmentScaleMapper;
@@ -87,6 +99,9 @@ public class AssessmentService {
     @Resource
     @Qualifier("open-ai")
     private ChatClient chatClient;
+
+    @Resource
+    private AiConfigService aiConfigService;
 
     // ==================== 量表查询（Cache-Aside） ====================
 
@@ -383,6 +398,393 @@ public class AssessmentService {
         return recordMapper.selectTrend(userId, scaleId);
     }
 
+    /**
+     * 用户管理后台：按指定 userId 分页查询其全部已完成测评记录（管理员视角，无归属校验）
+     * 复用 selectCompletedPage 的 userId 过滤；scaleId 留空表示查全部量表。
+     */
+    public Map<String, Object> listRecordsForAdmin(Long userId, long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        Page<AssessmentRecordResponseDTO> p = new Page<>(cur, sz);
+        IPage<AssessmentRecordResponseDTO> result = recordMapper.selectCompletedPage(p, userId, null);
+        return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    // ==================== 管理端：量表管理 ====================
+
+    /**
+     * 管理端量表分页（含测评次数聚合）
+     */
+    public IPage<AdminScaleListResponseDTO> adminScalePage(String keyword, String category, Integer enabled,
+                                                            long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        IPage<AdminScaleListResponseDTO> result = scaleMapper.selectAdminPage(
+                new Page<>(cur, sz), keyword, category, enabled);
+        // 补充 categoryLabel / enabledLabel
+        result.getRecords().forEach(dto -> {
+            AssessmentCategory cat = AssessmentCategory.fromCode(dto.getCategory());
+            if (cat != null) dto.setCategoryLabel(cat.getDescription());
+            dto.setEnabledLabel(dto.getEnabled() != null && dto.getEnabled() == 1 ? "启用" : "停用");
+        });
+        return result;
+    }
+
+    /**
+     * 管理端量表详情（解析 scoring_config，老量表缺 guidance/templates 兜底默认值）
+     */
+    public AdminScaleDetailResponseDTO adminScaleDetail(Long id) {
+        AssessmentScale scale = scaleMapper.selectById(id);
+        if (scale == null) {
+            throw new BusinessException("量表不存在");
+        }
+        AdminScaleDetailResponseDTO dto = new AdminScaleDetailResponseDTO();
+        dto.setId(scale.getId());
+        dto.setCode(scale.getCode());
+        dto.setName(scale.getName());
+        dto.setCategory(scale.getCategory());
+        dto.setDescription(scale.getDescription());
+        dto.setQuestionCount(scale.getQuestionCount());
+        dto.setEstimatedMinutes(scale.getEstimatedMinutes());
+        dto.setEnabled(scale.getEnabled());
+        dto.setCreatedAt(scale.getCreatedAt());
+        dto.setUpdatedAt(scale.getUpdatedAt());
+
+        AssessmentScoringService.ScoringConfig config = scoringService.parseConfig(scale.getScoringConfig());
+        dto.setGuidance(config.getGuidance() == null ? "" : config.getGuidance());
+        dto.setInterpretationTemplates(config.getInterpretationTemplates() == null
+                ? new java.util.LinkedHashMap<>() : config.getInterpretationTemplates());
+        dto.setQuestions(config.getQuestions() == null ? new java.util.ArrayList<>() : config.getQuestions());
+        dto.setDimensions(config.getDimensions() == null ? new java.util.ArrayList<>() : config.getDimensions());
+        dto.setReverseScoreQuestionIndexes(config.getReverseScoreQuestionIndexes());
+        dto.setReverseMaxScore(config.getReverseMaxScore());
+        dto.setTotalFromDimensions(config.getTotalFromDimensions());
+        dto.setLevels(config.getLevels() == null ? new java.util.ArrayList<>() : config.getLevels());
+        dto.setRiskQuestionIndexes(config.getRiskQuestionIndexes());
+        dto.setRiskScoreThreshold(config.getRiskScoreThreshold());
+        return dto;
+    }
+
+    /**
+     * 创建量表：code 唯一校验，默认停用，scoring_config 初始化为空结构
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Long createScale(ScaleSaveDTO dto) {
+        // code 唯一校验
+        Long exist = scaleMapper.selectCount(new LambdaQueryWrapper<AssessmentScale>()
+                .eq(AssessmentScale::getCode, dto.getCode()));
+        if (exist != null && exist > 0) {
+            throw new BusinessException("量表编码已存在");
+        }
+        AssessmentScale scale = AssessmentScale.builder()
+                .code(dto.getCode())
+                .name(dto.getName())
+                .category(dto.getCategory())
+                .description(dto.getDescription())
+                .questionCount(0)
+                .estimatedMinutes(0)
+                .scoringConfig(buildEmptyScoringConfig(dto.getGuidance()))
+                .enabled(0)
+                .sortOrder(0)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        scaleMapper.insert(scale);
+        log.info("管理员创建量表: id={}, code={}", scale.getId(), dto.getCode());
+        return scale.getId();
+    }
+
+    /**
+     * 编辑量表基本信息（名称/类别/简介/指导语），不动 scoring_config 题目部分
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateScale(Long id, ScaleSaveDTO dto) {
+        AssessmentScale scale = scaleMapper.selectById(id);
+        if (scale == null) {
+            throw new BusinessException("量表不存在");
+        }
+        // 编辑时若改 code，需校验唯一（排除自身）
+        if (!scale.getCode().equals(dto.getCode())) {
+            Long exist = scaleMapper.selectCount(new LambdaQueryWrapper<AssessmentScale>()
+                    .eq(AssessmentScale::getCode, dto.getCode())
+                    .ne(AssessmentScale::getId, id));
+            if (exist != null && exist > 0) {
+                throw new BusinessException("量表编码已存在");
+            }
+        }
+        // guidance 写入 scoring_config（合并原有题目配置）
+        String newConfig = updateGuidanceInConfig(scale.getScoringConfig(), dto.getGuidance());
+        scaleMapper.update(null, new LambdaUpdateWrapper<AssessmentScale>()
+                .eq(AssessmentScale::getId, id)
+                .set(AssessmentScale::getName, dto.getName())
+                .set(AssessmentScale::getCategory, dto.getCategory())
+                .set(AssessmentScale::getDescription, dto.getDescription())
+                .set(AssessmentScale::getScoringConfig, newConfig)
+                .set(AssessmentScale::getUpdatedAt, LocalDateTime.now()));
+        evictScaleCache(id, scale.getCode());
+        log.info("管理员编辑量表基本信息: id={}", id);
+    }
+
+    /**
+     * 整体保存题目 + 维度 + 指导语 + 解释模板
+     * <p>校验：题目索引连续、选项合法、维度题目索引在范围内、
+     * 保存前用评分引擎试解析（防半截 JSON 导致用户端解析失败）</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveQuestions(Long id, ScaleQuestionsDTO dto) {
+        AssessmentScale scale = scaleMapper.selectById(id);
+        if (scale == null) {
+            throw new BusinessException("量表不存在");
+        }
+        // 校验题目
+        List<ScaleQuestionsDTO.QuestionItem> questions = dto.getQuestions();
+        for (int i = 0; i < questions.size(); i++) {
+            ScaleQuestionsDTO.QuestionItem q = questions.get(i);
+            if (q.getOptions().size() < 2) {
+                throw new BusinessException("第 " + (i + 1) + " 题至少需要 2 个选项");
+            }
+        }
+        // 校验维度题目索引范围
+        if (dto.getDimensions() != null) {
+            for (ScaleQuestionsDTO.DimensionItem dim : dto.getDimensions()) {
+                if (dim.getQuestionIndexes() != null) {
+                    for (Integer qIdx : dim.getQuestionIndexes()) {
+                        if (qIdx < 0 || qIdx >= questions.size()) {
+                            throw new BusinessException("维度「" + dim.getName() + "」包含的题目索引超出范围");
+                        }
+                    }
+                }
+            }
+        }
+        // 构建 ScoringConfig 并序列化
+        AssessmentScoringService.ScoringConfig config = new AssessmentScoringService.ScoringConfig();
+        config.setScoringMode("sum");
+        List<AssessmentScoringService.ScoringQuestion> qList = new java.util.ArrayList<>();
+        for (int i = 0; i < questions.size(); i++) {
+            ScaleQuestionsDTO.QuestionItem src = questions.get(i);
+            AssessmentScoringService.ScoringQuestion target = new AssessmentScoringService.ScoringQuestion();
+            target.setIndex(i);
+            target.setText(src.getText());
+            List<AssessmentScoringService.ScoringOption> opts = new java.util.ArrayList<>();
+            for (ScaleQuestionsDTO.OptionItem opt : src.getOptions()) {
+                AssessmentScoringService.ScoringOption o = new AssessmentScoringService.ScoringOption();
+                o.setLabel(opt.getLabel());
+                o.setScore(opt.getScore());
+                o.setPolarity(opt.getPolarity());
+                opts.add(o);
+            }
+            target.setOptions(opts);
+            qList.add(target);
+        }
+        config.setQuestions(qList);
+        if (dto.getDimensions() != null) {
+            List<AssessmentScoringService.ScoringDimension> dimList = new java.util.ArrayList<>();
+            for (ScaleQuestionsDTO.DimensionItem d : dto.getDimensions()) {
+                AssessmentScoringService.ScoringDimension sd = new AssessmentScoringService.ScoringDimension();
+                sd.setName(d.getName());
+                sd.setQuestionIndexes(d.getQuestionIndexes());
+                if (d.getScoreMap() != null) {
+                    List<AssessmentScoringService.ScoreMapEntry> sm = new java.util.ArrayList<>();
+                    for (ScaleQuestionsDTO.ScoreMapEntry e : d.getScoreMap()) {
+                        AssessmentScoringService.ScoreMapEntry entry = new AssessmentScoringService.ScoreMapEntry();
+                        entry.setMax(e.getMax());
+                        entry.setScore(e.getScore());
+                        sm.add(entry);
+                    }
+                    sd.setScoreMap(sm);
+                }
+                dimList.add(sd);
+            }
+            config.setDimensions(dimList);
+        }
+        config.setGuidance(dto.getGuidance());
+        config.setInterpretationTemplates(dto.getInterpretationTemplates());
+        // 保留原有 levels / risk 配置（如非空）
+        AssessmentScoringService.ScoringConfig old = scoringService.parseConfig(scale.getScoringConfig());
+        config.setLevels(old.getLevels());
+        config.setRiskQuestionIndexes(old.getRiskQuestionIndexes());
+        config.setRiskScoreThreshold(old.getRiskScoreThreshold());
+        config.setTotalFromDimensions(old.getTotalFromDimensions());
+        config.setReverseScoreQuestionIndexes(old.getReverseScoreQuestionIndexes());
+        config.setReverseMaxScore(old.getReverseMaxScore());
+
+        // 保存前用评分引擎试解析（防半截 JSON）
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(config);
+            scoringService.parseConfig(json);
+        } catch (Exception e) {
+            throw new BusinessException("题目配置格式校验失败，请检查后重试");
+        }
+
+        // estimated_minutes = 题目数 × 45秒 向上取整
+        int estimatedMinutes = Math.max(1, (int) Math.ceil(questions.size() * 45.0 / 60.0));
+        scaleMapper.update(null, new LambdaUpdateWrapper<AssessmentScale>()
+                .eq(AssessmentScale::getId, id)
+                .set(AssessmentScale::getQuestionCount, questions.size())
+                .set(AssessmentScale::getEstimatedMinutes, estimatedMinutes)
+                .set(AssessmentScale::getScoringConfig, json)
+                .set(AssessmentScale::getUpdatedAt, LocalDateTime.now()));
+        evictScaleCache(id, scale.getCode());
+        log.info("管理员保存量表题目配置: id={}, questionCount={}", id, questions.size());
+    }
+
+    /**
+     * 启用/停用量表：停用后用户端不再展示（listScales 查 enabled=1 自动生效）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateEnabled(Long id, Integer enabled) {
+        AssessmentScale scale = scaleMapper.selectById(id);
+        if (scale == null) {
+            throw new BusinessException("量表不存在");
+        }
+        scaleMapper.update(null, new LambdaUpdateWrapper<AssessmentScale>()
+                .eq(AssessmentScale::getId, id)
+                .set(AssessmentScale::getEnabled, enabled)
+                .set(AssessmentScale::getUpdatedAt, LocalDateTime.now()));
+        evictScaleCache(id, scale.getCode());
+        log.info("管理员{}量表: id={}", enabled == 1 ? "启用" : "停用", id);
+    }
+
+    // ==================== 管理端：测评记录 ====================
+
+    /**
+     * 管理端测评记录分页
+     */
+    public IPage<AdminRecordResponseDTO> adminRecordPage(Long scaleId, String keyword, String level,
+                                                          String startDate, String endDate, long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        IPage<AdminRecordResponseDTO> result = recordMapper.selectAdminPage(
+                new Page<>(cur, sz), scaleId, keyword, level, startDate, endDate);
+        result.getRecords().forEach(dto -> {
+            AssessmentLevel lv = AssessmentLevel.fromCode(dto.getLevel());
+            if (lv != null) dto.setLevelLabel(lv.getLabel());
+        });
+        return result;
+    }
+
+    /**
+     * 管理端报告详情（敏感数据，仅管理员）
+     */
+    public AdminReportDetailResponseDTO adminRecordDetail(Long id) {
+        AssessmentRecord record = recordMapper.selectById(id);
+        if (record == null) {
+            throw new BusinessException("测评记录不存在");
+        }
+        AssessmentScale scale = scaleMapper.selectById(record.getScaleId());
+        AdminReportDetailResponseDTO dto = new AdminReportDetailResponseDTO();
+        dto.setRecordId(record.getId());
+        dto.setUserId(record.getUserId());
+        dto.setScaleId(record.getScaleId());
+        dto.setScaleName(scale != null ? scale.getName() : null);
+        dto.setTotalScore(record.getTotalScore());
+        dto.setLevel(record.getLevel());
+        AssessmentLevel lv = AssessmentLevel.fromCode(record.getLevel());
+        if (lv != null) dto.setLevelLabel(lv.getLabel());
+        dto.setRiskFlag(record.getRiskFlag() == null ? 0 : record.getRiskFlag());
+        dto.setAnswers(convert.parseAnswers(record.getAnswers()));
+        dto.setDimensionScores(convert.parseDimensionScores(record.getDimensionScores()));
+        Map<String, Object> report = convert.parseReportMap(record.getReport());
+        dto.setInterpretation((String) report.get("interpretation"));
+        Object sugg = report.get("suggestions");
+        if (sugg instanceof List<?> list) {
+            dto.setSuggestions(list.stream().map(Object::toString).toList());
+        }
+        dto.setInterventionStatus(record.getInterventionStatus());
+        dto.setInterventionNote(record.getInterventionNote());
+        return dto;
+    }
+
+    // ==================== 管理端：高危预警 ====================
+
+    /**
+     * 高危预警分页：level IN (MODERATE,SEVERE) OR risk_flag=1
+     */
+    public IPage<AlertResponseDTO> listAlerts(String level, Integer status, long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        IPage<AlertResponseDTO> result = recordMapper.selectAlertsPage(new Page<>(cur, sz), level, status);
+        result.getRecords().forEach(dto -> {
+            AssessmentLevel lv = AssessmentLevel.fromCode(dto.getLevel());
+            if (lv != null) dto.setLevelLabel(lv.getLabel());
+            InterventionStatus is = InterventionStatus.fromCode(dto.getInterventionStatus());
+            if (is != null) dto.setInterventionStatusLabel(is.getLabel());
+        });
+        return result;
+    }
+
+    /**
+     * 标记干预状态：未处理 → 已干预 → 已处理（可回退到已处理前一状态）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateIntervention(Long recordId, InterventionDTO dto) {
+        AssessmentRecord record = recordMapper.selectById(recordId);
+        if (record == null) {
+            throw new BusinessException("测评记录不存在");
+        }
+        int cur = record.getInterventionStatus() == null ? 0 : record.getInterventionStatus();
+        int target = dto.getStatus();
+        // 状态机校验：0→1→2，可回退（2→1、1→0），禁止跳到 0 之外
+        if (target < 0 || target > 2) {
+            throw new BusinessException("非法的干预状态");
+        }
+        recordMapper.update(null, new LambdaUpdateWrapper<AssessmentRecord>()
+                .eq(AssessmentRecord::getId, recordId)
+                .set(AssessmentRecord::getInterventionStatus, target)
+                .set(AssessmentRecord::getInterventionNote, dto.getNote())
+                .set(AssessmentRecord::getIntervenedAt,
+                        target != InterventionStatus.PENDING.getCode() ? LocalDateTime.now() : null)
+                .set(AssessmentRecord::getUpdatedAt, LocalDateTime.now()));
+        log.info("管理员标记干预: recordId={}, {}→{}", recordId, cur, target);
+    }
+
+    // ==================== 管理端辅助方法 ====================
+
+    /**
+     * 清空量表 Redis 缓存（id + code 双键）
+     */
+    private void evictScaleCache(Long scaleId, String code) {
+        try {
+            stringRedisTemplate.delete(RedisConstants.buildAssessmentScaleCacheKey(scaleId));
+            if (code != null) {
+                stringRedisTemplate.delete(RedisConstants.buildAssessmentScaleCacheKeyByCode(code));
+            }
+        } catch (Exception e) {
+            log.warn("量表缓存清理失败: scaleId={}, err={}", scaleId, e.getMessage());
+        }
+    }
+
+    /**
+     * 构建空 scoring_config（仅含 guidance）
+     */
+    private String buildEmptyScoringConfig(String guidance) {
+        try {
+            AssessmentScoringService.ScoringConfig c = new AssessmentScoringService.ScoringConfig();
+            c.setQuestions(new java.util.ArrayList<>());
+            c.setDimensions(new java.util.ArrayList<>());
+            c.setLevels(new java.util.ArrayList<>());
+            c.setGuidance(guidance);
+            c.setInterpretationTemplates(new java.util.LinkedHashMap<>());
+            return objectMapper.writeValueAsString(c);
+        } catch (Exception e) {
+            throw new BusinessException("量表配置初始化失败");
+        }
+    }
+
+    /**
+     * 更新 scoring_config 中的 guidance（保留其余字段）
+     */
+    private String updateGuidanceInConfig(String configJson, String guidance) {
+        try {
+            AssessmentScoringService.ScoringConfig c = scoringService.parseConfig(configJson);
+            c.setGuidance(guidance);
+            return objectMapper.writeValueAsString(c);
+        } catch (Exception e) {
+            throw new BusinessException("量表配置更新失败");
+        }
+    }
+
     // ==================== Redis 进度存取 ====================
 
     /**
@@ -504,7 +906,15 @@ public class AssessmentService {
         Map<String, Object> reportMap = new LinkedHashMap<>();
         AssessmentScoringService.ScoringLevel matched = result.getMatchedLevel();
         StringBuilder interpretation = new StringBuilder();
-        if (matched != null) {
+        // 优先使用管理员配置的 interpretationTemplates（按等级），老量表缺省回退 levels.description
+        if (config.getInterpretationTemplates() != null && result.getLevel() != null) {
+            String tpl = config.getInterpretationTemplates().get(result.getLevel());
+            if (tpl != null && !tpl.isBlank()) {
+                interpretation.append(tpl);
+            } else if (matched != null) {
+                interpretation.append(matched.getDescription());
+            }
+        } else if (matched != null) {
             interpretation.append(matched.getDescription());
         }
         if (result.getDimensionScores() != null && !result.getDimensionScores().isEmpty()) {
@@ -574,7 +984,9 @@ public class AssessmentService {
             );
             String conversationId = "assessment_" + System.currentTimeMillis();
             return chatClient.prompt()
-                    .system(PromptManage.PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT)
+                    // per-request 模型参数覆盖（DB 配置 60s 缓存）
+                    .options(aiConfigService.buildChatOptions())
+                    .system(PromptManage.getBaseSystemPrompt())
                     .user(promptText)
                     .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
                     .call()

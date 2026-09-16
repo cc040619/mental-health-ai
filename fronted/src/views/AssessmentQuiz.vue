@@ -142,14 +142,16 @@ const nextQuestion = () => {
     }
 }
 
+const buildAnswerList = () => Object.keys(answers.value).map(k => ({
+    questionIndex: Number(k),
+    score: answers.value[Number(k)]
+}))
+
+// 返回 Promise，提交前需 await：最后一题没有“下一题”，其答案只能靠这里同步到 Redis
 const persistProgress = () => {
-    const answerList = Object.keys(answers.value).map(k => ({
-        questionIndex: Number(k),
-        score: answers.value[Number(k)]
-    }))
-    saveProgress(recordId, {
+    return saveProgress(recordId, {
         currentIndex: currentIndex.value,
-        answers: answerList
+        answers: buildAnswerList()
     }).catch(() => { /* 静默，拦截器已提示 */ })
 }
 
@@ -159,13 +161,9 @@ const handleExit = () => {
         cancelButtonText: '继续作答',
         type: 'warning'
     }).then(() => {
-        const answerList = Object.keys(answers.value).map(k => ({
-            questionIndex: Number(k),
-            score: answers.value[Number(k)]
-        }))
         saveProgress(recordId, {
             currentIndex: currentIndex.value,
-            answers: answerList
+            answers: buildAnswerList()
         }).finally(() => {
             router.push('/assessment')
         })
@@ -186,7 +184,7 @@ const handleSubmit = () => {
         confirmButtonText: '确认提交',
         cancelButtonText: '再检查下',
         type: 'info'
-    }).then(() => {
+    }).then(async () => {
         const loading = ElLoading.service({
             lock: true,
             text: '正在生成测评报告，请稍候...',
@@ -194,17 +192,17 @@ const handleSubmit = () => {
             spinner: 'el-icon-loading',
             customClass: 'submit-loading'
         })
-        const answerList = Object.keys(answers.value).map(k => ({
-            questionIndex: Number(k),
-            score: answers.value[Number(k)]
-        }))
-        submitAssessment(recordId, { answers: answerList }).then(() => {
-            loading.close()
+        try {
+            // 后端提交时以 Redis 进度为准，须先把最后一题答案同步进去，否则误报“还有未作答”
+            await persistProgress()
+            await submitAssessment(recordId, { answers: buildAnswerList() })
             ElMessage.success('测评完成！正在跳转到报告页...')
             router.replace(`/assessment/report/${recordId}`)
-        }).catch(() => {
+        } catch (e) {
+            // 错误由拦截器提示
+        } finally {
             loading.close()
-        })
+        }
     }).catch(() => { /* 取消 */ })
 }
 

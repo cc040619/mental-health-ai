@@ -79,6 +79,12 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- WebSocket：预约留言室原生 TextWebSocketHandler 支持 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.auth0</groupId>
             <artifactId>java-jwt</artifactId>
@@ -91,10 +97,23 @@
             <version>5.8.40</version>
         </dependency>
 
+        <!-- Apache POI：hutool ExcelWriter 导出 xlsx 的底层依赖（hutool-all 不含 POI） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
         <!-- OpenAI 自动配置，不需要写version，bom管控 -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-autoconfigure-model-openai</artifactId>
+        </dependency>
+
+        <!-- AOP：AI 调用埋点等切面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
 
         <!-- Redis：用于 token 白名单、缓存等场景 -->

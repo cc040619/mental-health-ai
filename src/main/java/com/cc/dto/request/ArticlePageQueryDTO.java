@@ -34,4 +34,10 @@ public class ArticlePageQueryDTO {
 
     // 排序方向 asc|desc
     private String sortDirection;
+
+    // 管理端排序字段 readCount|likeCount|commentCount|favoriteCount|createdAt（白名单校验，不强制 status=1）
+    private String sortBy;
+
+    // 管理端排序方向 asc|desc
+    private String order;
 }

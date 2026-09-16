@@ -60,5 +60,12 @@ public class PostResponseDTO {
     // 帖子状态（我的帖子/后台场景使用）
     private Integer status;
 
+    // 置顶/加精标记（用户端列表置顶标识 + 管理端）
+    private Integer isTop;
+    private Integer isFeatured;
+
+    // 审核驳回原因（REJECTED 状态时"我的帖子"可见）
+    private String rejectReason;
+
     private LocalDateTime createdAt;
 }

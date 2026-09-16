@@ -44,6 +44,10 @@ service.interceptors.response.use(
   (response) => {
     // 对响应数据做点什么
     const { data, config } = response
+    // blob 响应（文件下载）无业务码结构，直通返回整个 response 供调用方取 headers/data
+    if (config.responseType === 'blob') {
+        return response
+    }
     // 处理业务状态码
     if (data.code === '200') {
         return data.data

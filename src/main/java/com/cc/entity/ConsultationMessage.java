@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -51,6 +52,10 @@ public class ConsultationMessage {
     @Size(max = 50, message = "情绪标签长度不能超过50个字符")
     @TableField("emotion_tag")
     private String emotionTag;
+
+    // 情绪值 0-100（情绪分析完成后回写该回合最新用户消息；历史消息为 NULL，前端图表跳过）
+    @TableField("emotion_value")
+    private BigDecimal emotionValue;
 
     // 使用的AI模型
     @Size(max = 50, message = "AI模型名称长度不能超过50个字符")

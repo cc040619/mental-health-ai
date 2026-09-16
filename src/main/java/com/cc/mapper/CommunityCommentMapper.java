@@ -3,6 +3,7 @@ package com.cc.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.cc.dto.response.AdminCommentResponseDTO;
 import com.cc.dto.response.CommentResponseDTO;
 import com.cc.entity.CommunityComment;
 import org.apache.ibatis.annotations.Mapper;
@@ -80,4 +81,33 @@ public interface CommunityCommentMapper extends BaseMapper<CommunityComment> {
             LIMIT 100
             """)
     List<CommentResponseDTO> selectMyComments(@Param("userId") Long userId);
+
+    /**
+     * 管理端评论分页：帖子/内容关键字/状态筛选，带帖子标题与父评论摘要（楼中楼缩进展示）。
+     * 匿名评论作者屏蔽为「匿名用户」，真实身份仅举报处理可见。
+     */
+    @Select("""
+            <script>
+            SELECT c.id, c.post_id AS postId, c.parent_id AS parentId, c.author_id AS authorId,
+                   c.content, c.is_anonymous AS isAnonymous, c.status, c.created_at AS createdAt,
+                   CASE WHEN c.is_anonymous = 1 THEN '匿名用户'
+                        ELSE COALESCE(NULLIF(u.nickname, ''), u.username) END AS authorName,
+                   p.title AS postTitle,
+                   pc.content AS parentContent
+            FROM community_comment c
+            LEFT JOIN user u ON u.id = c.author_id
+            LEFT JOIN community_post p ON p.id = c.post_id
+            LEFT JOIN community_comment pc ON pc.id = c.parent_id
+            <where>
+                <if test='postId != null'>AND c.post_id = #{postId}</if>
+                <if test='status != null'>AND c.status = #{status}</if>
+                <if test='keyword != null and keyword != ""'>AND c.content LIKE CONCAT('%', #{keyword}, '%')</if>
+            </where>
+            ORDER BY c.created_at DESC
+            </script>
+            """)
+    IPage<AdminCommentResponseDTO> selectAdminCommentPage(Page<AdminCommentResponseDTO> page,
+                                                          @Param("postId") Long postId,
+                                                          @Param("keyword") String keyword,
+                                                          @Param("status") Integer status);
 }

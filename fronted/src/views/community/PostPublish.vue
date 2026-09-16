@@ -158,7 +158,12 @@ const submit = () => {
     images: form.images,
     isAnonymous: form.isAnonymous
   }).then(data => {
-    ElMessage.success('发布成功 🌱')
+    // 先审后发开启时新帖状态为 4-待审核，用户端不可见，通过后展示
+    if (data.status === 4) {
+      ElMessage.success('已提交审核，通过后将展示 🌱')
+    } else {
+      ElMessage.success('发布成功 🌱')
+    }
     router.replace(`/community/post/${data.id}`)
   }).catch(() => {
     ElMessage.error('发布失败，请稍后重试')

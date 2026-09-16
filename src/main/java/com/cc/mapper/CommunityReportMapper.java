@@ -19,7 +19,7 @@ import org.apache.ibatis.annotations.Select;
 public interface CommunityReportMapper extends BaseMapper<CommunityReport> {
 
     /**
-     * 后台举报分页：举报人昵称 + 举报对象快照（帖子标题/评论内容）
+     * 后台举报分页：举报人昵称 + 举报对象快照（帖子标题/评论内容）+ 被举报内容作者（举报处理场景可见真实身份）
      */
     @Select("""
             <script>
@@ -28,11 +28,13 @@ public interface CommunityReportMapper extends BaseMapper<CommunityReport> {
                    r.created_at AS createdAt, r.handled_at AS handledAt,
                    COALESCE(NULLIF(u.nickname, ''), u.username) AS reporterName,
                    p.title AS postTitle,
-                   LEFT(c.content, 100) AS commentContent
+                   LEFT(c.content, 100) AS commentContent,
+                   COALESCE(NULLIF(u2.nickname, ''), u2.username) AS authorName
             FROM community_report r
             LEFT JOIN user u ON u.id = r.reporter_id
             LEFT JOIN community_post p ON r.target_type = 1 AND p.id = r.target_id
             LEFT JOIN community_comment c ON r.target_type = 2 AND c.id = r.target_id
+            LEFT JOIN user u2 ON u2.id = COALESCE(p.author_id, c.author_id)
             <where>
                 <if test='status != null'>
                     AND r.status = #{status}

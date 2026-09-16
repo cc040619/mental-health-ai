@@ -5,14 +5,22 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.cc.common.CommunityConstants;
 import com.cc.common.RedisConstants;
+import com.cc.dto.request.BlacklistDTO;
+import com.cc.dto.request.BoardSaveDTO;
 import com.cc.dto.request.CommentCreateDTO;
 import com.cc.dto.request.PostCreateDTO;
 import com.cc.dto.request.ReportCreateDTO;
+import com.cc.dto.response.AdminBlacklistResponseDTO;
+import com.cc.dto.response.AdminBoardResponseDTO;
+import com.cc.dto.response.AdminCommentResponseDTO;
 import com.cc.dto.response.CommentResponseDTO;
 import com.cc.dto.response.CommunityMineResponseDTO;
 import com.cc.dto.response.PostResponseDTO;
 import com.cc.dto.response.ReportResponseDTO;
+import com.cc.entity.CommunityBlacklist;
+import com.cc.entity.CommunityBoardEntity;
 import com.cc.entity.CommunityComment;
 import com.cc.entity.CommunityFavorite;
 import com.cc.entity.CommunityLike;
@@ -24,6 +32,8 @@ import com.cc.enums.CommunityPostStatus;
 import com.cc.enums.CommunityReportStatus;
 import com.cc.enums.CommunityReportTarget;
 import com.cc.exception.BusinessException;
+import com.cc.mapper.CommunityBlacklistMapper;
+import com.cc.mapper.CommunityBoardMapper;
 import com.cc.mapper.CommunityCommentMapper;
 import com.cc.mapper.CommunityFavoriteMapper;
 import com.cc.mapper.CommunityLikeMapper;
@@ -96,6 +106,10 @@ public class CommunityService {
     @Resource
     private CommunityReportMapper reportMapper;
     @Resource
+    private CommunityBoardMapper boardMapper;
+    @Resource
+    private CommunityBlacklistMapper blacklistMapper;
+    @Resource
     private UserMapper userMapper;
     @Resource
     private SensitiveWordFilter sensitiveWordFilter;
@@ -103,6 +117,10 @@ public class CommunityService {
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private ObjectMapper objectMapper;
+    @Resource
+    private NotificationService notificationService;
+    @Resource
+    private SysConfigService sysConfigService;
 
     /** 延时双删执行器（单线程守护，仅做轻量 key 删除，应用关闭即回收） */
     // ponytail: 单线程足够覆盖社区写量；写量成瓶颈时改用 Spring TaskScheduler 共享池
@@ -177,7 +195,7 @@ public class CommunityService {
         boolean showReal = CurrentUserUtils.isAdmin();
         long cur = (page != null && page > 0) ? page : 1L;
         long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
-        if (board != null && !board.isBlank() && CommunityBoard.fromCode(board) == null) {
+        if (board != null && !board.isBlank() && !isValidBoard(board)) {
             throw new BusinessException("板块不存在");
         }
 
@@ -355,13 +373,15 @@ public class CommunityService {
     // ==================== 发帖 / 删帖 ====================
 
     /**
-     * 发帖：板块校验 → HTML 白名单清洗 → 敏感词拦截 → 危机词标记 → 落库
-     * <p>新帖无详情缓存，只需延时双删热门榜，下次读 hot 回填新帖</p>
+     * 发帖：黑名单拦截 → 板块校验（表驱动，枚举兜底）→ HTML 白名单清洗 → 敏感词拦截 → 危机词标记 → 落库
+     * <p>先审后发开启时新帖进待审核；关闭时发帖即正常（现状）。
+     * 新帖无详情缓存，只需延时双删热门榜，下次读 hot 回填新帖</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public PostResponseDTO createPost(PostCreateDTO dto) {
         Long userId = CurrentUserUtils.getCurrentUserId();
-        if (CommunityBoard.fromCode(dto.getBoard()) == null) {
+        checkBlocked(userId);
+        if (!isValidBoard(dto.getBoard())) {
             throw new BusinessException("请选择正确的板块");
         }
         // 富文本 XSS 白名单清洗
@@ -371,6 +391,12 @@ public class CommunityService {
         // 危机词检测：不拦截，标记 is_crisis
         boolean crisis = sensitiveWordFilter.findCrisisWord(dto.getTitle() + cleanContent) != null;
 
+        // 发帖审核开关配置化（后台改后立即生效，缓存 5min；常量保留为兜底默认值）
+        int status = sysConfigService.getBoolean(SysConfigService.KEY_COMMUNITY_POST_REVIEW,
+                CommunityConstants.REVIEW_BEFORE_PUBLISH)
+                ? CommunityPostStatus.REVIEW_PENDING.getCode()
+                : CommunityPostStatus.NORMAL.getCode();
+
         CommunityPost post = CommunityPost.builder()
                 .board(dto.getBoard())
                 .title(dto.getTitle().trim())
@@ -378,14 +404,16 @@ public class CommunityService {
                 .images(dto.getImages())
                 .authorId(userId)
                 .isAnonymous(Integer.valueOf(1).equals(dto.getIsAnonymous()) ? 1 : 0)
-                .status(CommunityPostStatus.NORMAL.getCode())
+                .isTop(0).isFeatured(0)
+                .status(status)
                 .likeCount(0).commentCount(0).favoriteCount(0).viewCount(0)
                 .isCrisis(crisis ? 1 : 0)
                 .build();
         postMapper.insert(post);
-        // 新帖入库触发热门榜延时双删（帖子本身无详情缓存可删）
+        // 新帖入库触发热门榜延时双删（帖子本身无详情缓存可删；待审核帖不入热榜但需失效旧榜）
         evictHotCacheDoubleDelete();
-        log.info("社区发帖: userId={}, postId={}, board={}, crisis={}", userId, post.getId(), dto.getBoard(), crisis);
+        log.info("社区发帖: userId={}, postId={}, board={}, status={}, crisis={}",
+                userId, post.getId(), dto.getBoard(), status, crisis);
 
         PostResponseDTO resp = new PostResponseDTO();
         resp.setId(post.getId());
@@ -404,7 +432,7 @@ public class CommunityService {
         resp.setFavoriteCount(0);
         resp.setViewCount(0);
         resp.setIsCrisis(post.getIsCrisis());
-        resp.setStatus(0);
+        resp.setStatus(status);
         resp.setCreatedAt(post.getCreatedAt());
         User user = userMapper.selectById(userId);
         if (Integer.valueOf(1).equals(post.getIsAnonymous())) {
@@ -466,6 +494,14 @@ public class CommunityService {
                 .eq(CommunityPost::getId, postId).setSql("like_count = like_count + 1"));
         // like_count 变更触发详情 + 热门榜延时双删
         evictPostCacheDoubleDelete(postId);
+        // 点赞他人帖子 → 异步互动通知（自己赞自己不通知；匿名帖隐藏互动者昵称；未读去重）
+        if (!post.getAuthorId().equals(userId)) {
+            boolean postAnonymous = Integer.valueOf(1).equals(post.getIsAnonymous());
+            String content = postAnonymous
+                    ? "有用户赞了你的匿名帖子"
+                    : buildActorName(userId, false) + "赞了你的帖子《" + post.getTitle() + "》";
+            notificationService.createInteractionNotification(post.getAuthorId(), "点赞提醒", content, postId);
+        }
         return true;
     }
 
@@ -527,18 +563,21 @@ public class CommunityService {
     }
 
     /**
-     * 发表评论 / 楼中楼回复（parentId 限一层）：敏感词拦截 + 危机词提示 + comment_count 原子 +1
+     * 发表评论 / 楼中楼回复（parentId 限一层）：黑名单拦截 + 敏感词拦截 + 危机词提示 + comment_count 原子 +1
+     * <p>先审后发开启时新评论进待审核（count 已 +1，驳回/删除时同事务 -1，口径见 reviewComment）</p>
      */
     @Transactional(rollbackFor = Exception.class)
     public CommentResponseDTO createComment(Long postId, CommentCreateDTO dto) {
         Long userId = CurrentUserUtils.getCurrentUserId();
+        checkBlocked(userId);
         CommunityPost post = postMapper.selectById(postId);
         if (post == null || post.getStatus() == null || post.getStatus() != CommunityPostStatus.NORMAL.getCode()) {
             throw new BusinessException("帖子不存在或已下架");
         }
         // 楼中楼限一层：父评论必须存在、属于本帖、且本身是顶层评论
+        CommunityComment parent = null;
         if (dto.getParentId() != null) {
-            CommunityComment parent = commentMapper.selectById(dto.getParentId());
+            parent = commentMapper.selectById(dto.getParentId());
             if (parent == null || !postId.equals(parent.getPostId()) || parent.getParentId() != null) {
                 throw new BusinessException("回复的评论不存在");
             }
@@ -546,13 +585,16 @@ public class CommunityService {
         sensitiveWordFilter.checkSensitive(dto.getContent());
         boolean crisis = sensitiveWordFilter.findCrisisWord(dto.getContent()) != null;
 
+        // 评论审核开关配置化（同发帖：后台改后立即生效）
+        int status = sysConfigService.getBoolean(SysConfigService.KEY_COMMUNITY_COMMENT_REVIEW,
+                CommunityConstants.REVIEW_BEFORE_PUBLISH) ? 2 : 0;
         CommunityComment comment = CommunityComment.builder()
                 .postId(postId)
                 .parentId(dto.getParentId())
                 .authorId(userId)
                 .content(dto.getContent().trim())
                 .isAnonymous(Integer.valueOf(1).equals(dto.getIsAnonymous()) ? 1 : 0)
-                .status(0)
+                .status(status)
                 .createdAt(LocalDateTime.now())
                 .build();
         commentMapper.insert(comment);
@@ -560,7 +602,8 @@ public class CommunityService {
                 .eq(CommunityPost::getId, postId).setSql("comment_count = comment_count + 1"));
         // comment_count 变更触发详情 + 热门榜延时双删
         evictPostCacheDoubleDelete(postId);
-        log.info("发表社区评论: userId={}, postId={}, commentId={}, crisis={}", userId, postId, comment.getId(), crisis);
+        log.info("发表社区评论: userId={}, postId={}, commentId={}, status={}, crisis={}",
+                userId, postId, comment.getId(), status, crisis);
 
         CommentResponseDTO resp = new CommentResponseDTO();
         resp.setId(comment.getId());
@@ -569,10 +612,30 @@ public class CommunityService {
         resp.setAuthorId(userId);
         resp.setContent(comment.getContent());
         resp.setIsAnonymous(comment.getIsAnonymous());
+        resp.setStatus(status);
         resp.setIsMine(true);
         resp.setCreatedAt(comment.getCreatedAt());
         resp.setReplies(List.of());
         User user = userMapper.selectById(userId);
+        // 评论通知帖子作者；楼中楼回复通知被回复评论的作者（parent 在上方已校验存在）。
+        // 待审核评论审核通过后才可见，不立即通知（通知口径与可见性一致）
+        Long notifyReceiverId = dto.getParentId() == null
+                ? post.getAuthorId()
+                : parent.getAuthorId();
+        if (status == 0 && !notifyReceiverId.equals(userId)) {
+            boolean hideActor = Integer.valueOf(1).equals(post.getIsAnonymous())
+                    || Integer.valueOf(1).equals(comment.getIsAnonymous());
+            String actorName = buildActorName(userId, hideActor);
+            String snippet = comment.getContent();
+            snippet = snippet.length() > 30 ? snippet.substring(0, 30) : snippet;
+            if (dto.getParentId() == null) {
+                notificationService.createInteractionNotification(notifyReceiverId,
+                        "评论提醒", actorName + "评论了你的帖子：《" + snippet + "》", postId);
+            } else {
+                notificationService.createInteractionNotification(notifyReceiverId,
+                        "回复提醒", actorName + "回复了你的评论：《" + snippet + "》", postId);
+            }
+        }
         if (Integer.valueOf(1).equals(comment.getIsAnonymous())) {
             resp.setAuthorName("匿名用户");
         } else if (user != null) {
@@ -724,6 +787,10 @@ public class CommunityService {
             dto.setViewCount(p.getViewCount());
             dto.setIsCrisis(p.getIsCrisis());
             dto.setStatus(p.getStatus());
+            dto.setIsTop(p.getIsTop());
+            dto.setIsFeatured(p.getIsFeatured());
+            // 驳回原因仅本人可见（REJECTED 状态）
+            dto.setRejectReason(p.getRejectReason());
             dto.setCreatedAt(p.getCreatedAt());
             return dto;
         }).collect(Collectors.toList());
@@ -743,24 +810,78 @@ public class CommunityService {
         return result;
     }
 
+    /**
+     * 用户管理后台：按指定 userId 分页查询该用户全部帖子（管理员视角，作者真实身份可见，含全部状态）
+     */
+    public Map<String, Object> pagePostsByUserIdForAdmin(Long userId, long page, long size) {
+        long cur = Math.max(page, 1L);
+        long sz = Math.min(Math.max(size, 1L), 20L);
+        Page<CommunityPost> p = new Page<>(cur, sz);
+        LambdaQueryWrapper<CommunityPost> wrapper = new LambdaQueryWrapper<CommunityPost>()
+                .eq(CommunityPost::getAuthorId, userId)
+                .ne(CommunityPost::getStatus, CommunityPostStatus.DELETED.getCode())
+                .orderByDesc(CommunityPost::getCreatedAt);
+        Page<CommunityPost> postPage = postMapper.selectPage(p, wrapper);
+
+        User author = userMapper.selectById(userId);
+        String authorName = author != null ? author.getDisplayName() : null;
+        String authorAvatar = author != null ? author.getAvatar() : null;
+
+        List<PostResponseDTO> records = postPage.getRecords().stream().map(post -> {
+            PostResponseDTO dto = new PostResponseDTO();
+            dto.setId(post.getId());
+            dto.setBoard(post.getBoard());
+            dto.setBoardLabel(boardLabel(post.getBoard()));
+            dto.setTitle(post.getTitle());
+            dto.setSummary(cleanSummary(post.getContent()));
+            dto.setImages(post.getImages());
+            dto.setAuthorId(post.getAuthorId());
+            dto.setIsAnonymous(post.getIsAnonymous());
+            // 管理员视角：匿名帖也展示作者真实昵称头像
+            dto.setAuthorName(authorName);
+            dto.setAvatar(authorAvatar);
+            dto.setIsMine(false);
+            dto.setIsLiked(false);
+            dto.setIsFavorited(false);
+            dto.setLikeCount(post.getLikeCount());
+            dto.setCommentCount(post.getCommentCount());
+            dto.setFavoriteCount(post.getFavoriteCount());
+            dto.setViewCount(post.getViewCount());
+            dto.setIsCrisis(post.getIsCrisis());
+            dto.setStatus(post.getStatus());
+            dto.setCreatedAt(post.getCreatedAt());
+            return dto;
+        }).collect(Collectors.toList());
+
+        return Map.of("records", records, "total", postPage.getTotal());
+    }
+
     // ==================== 板块 ====================
 
     /**
-     * 板块列表（静态枚举，缓存 1 天）
+     * 启用板块列表（表驱动，缓存 1 天；表空/异常时回退枚举，迁移未执行兜底）
      */
-    public List<Map<String, String>> listBoards() {
+    public List<CommunityBoardEntity> enabledBoards() {
         try {
             String cached = stringRedisTemplate.opsForValue().get(RedisConstants.COMMUNITY_BOARDS_KEY);
             if (cached != null && !cached.isBlank()) {
-                return objectMapper.readValue(cached, new TypeReference<List<Map<String, String>>>() {
+                return objectMapper.readValue(cached, new TypeReference<List<CommunityBoardEntity>>() {
                 });
             }
         } catch (Exception e) {
             log.warn("板块缓存读取异常: {}", e.getMessage());
         }
-        List<Map<String, String>> boards = new ArrayList<>();
-        for (CommunityBoard b : CommunityBoard.values()) {
-            boards.add(Map.of("code", b.getCode(), "label", b.getLabel()));
+        List<CommunityBoardEntity> boards = boardMapper.selectList(new LambdaQueryWrapper<CommunityBoardEntity>()
+                .eq(CommunityBoardEntity::getStatus, 1)
+                .orderByAsc(CommunityBoardEntity::getSortOrder)
+                .orderByAsc(CommunityBoardEntity::getId));
+        if (boards.isEmpty()) {
+            // 表空回退枚举（迁移未执行时用户端不挂）
+            boards = new ArrayList<>();
+            for (CommunityBoard b : CommunityBoard.values()) {
+                boards.add(CommunityBoardEntity.builder().code(b.getCode()).name(b.getLabel()).build());
+            }
+            return boards;
         }
         try {
             stringRedisTemplate.opsForValue().set(
@@ -773,6 +894,38 @@ public class CommunityService {
             log.warn("板块缓存写入失败（fail-open）: {}", e.getMessage());
         }
         return boards;
+    }
+
+    /**
+     * 板块列表（用户端导航）：{code,label} 结构与旧枚举版接口保持兼容
+     */
+    public List<Map<String, String>> listBoards() {
+        return enabledBoards().stream()
+                .map(b -> Map.of("code", b.getCode(), "label", b.getName()))
+                .collect(Collectors.toList());
+    }
+
+    /** 删除板块缓存（板块增删改/启停后调用） */
+    private void evictBoardsCache() {
+        try {
+            stringRedisTemplate.delete(RedisConstants.COMMUNITY_BOARDS_KEY);
+        } catch (Exception e) {
+            log.warn("删除板块缓存失败（fail-open）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 板块校验（表驱动）：启用板块命中即通过；表空/枚举兜底
+     */
+    private boolean isValidBoard(String code) {
+        if (code == null || code.isBlank()) {
+            return false;
+        }
+        List<CommunityBoardEntity> boards = enabledBoards();
+        if (!boards.isEmpty()) {
+            return boards.stream().anyMatch(b -> code.equals(b.getCode()));
+        }
+        return CommunityBoard.fromCode(code) != null;
     }
 
     // ==================== 后台：举报管理 ====================
@@ -790,8 +943,9 @@ public class CommunityService {
     }
 
     /**
-     * 处理举报（管理员）：DOWN-下架内容（帖子 status=3 / 评论 status=1）；IGNORE-忽略（举报 status=2，
-     * 若帖子为举报待审则恢复正常）
+     * 处理举报（管理员）：DELETE_POST-删除内容（帖软删+评论联动 / 评软删+count-1，举报置已下架）；
+     * WARN_USER-警告用户（不删内容，举报置已警告）；IGNORE-忽略（举报置已忽略，
+     * 若帖子为举报待审且无其他待处理举报则恢复正常）
      */
     @Transactional(rollbackFor = Exception.class)
     public void handleReport(Long reportId, String action) {
@@ -803,49 +957,411 @@ public class CommunityService {
         if (report.getStatus() != null && report.getStatus() != CommunityReportStatus.PENDING.getCode()) {
             throw new BusinessException("该举报已处理");
         }
-        boolean down = "DOWN".equals(action);
-        report.setStatus(down ? CommunityReportStatus.TAKEN_DOWN.getCode() : CommunityReportStatus.IGNORED.getCode());
-        report.setHandledAt(LocalDateTime.now());
-        reportMapper.updateById(report);
-
         CommunityReportTarget target = CommunityReportTarget.fromCode(report.getTargetType());
-        if (down) {
-            if (target == CommunityReportTarget.POST) {
-                postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
-                        .eq(CommunityPost::getId, report.getTargetId())
-                        .set(CommunityPost::getStatus, CommunityPostStatus.TAKEN_DOWN.getCode()));
-                // 帖子下架触发详情 + 热门榜延时双删
-                evictPostCacheDoubleDelete(report.getTargetId());
-            } else if (target == CommunityReportTarget.COMMENT) {
-                CommunityComment comment = commentMapper.selectById(report.getTargetId());
-                if (comment != null && comment.getStatus() != null && comment.getStatus() == 0) {
-                    comment.setStatus(1);
-                    commentMapper.updateById(comment);
-                    postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
-                            .eq(CommunityPost::getId, comment.getPostId())
-                            .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
-                    // comment_count 变更触发详情 + 热门榜延时双删
-                    evictPostCacheDoubleDelete(comment.getPostId());
+
+        switch (action) {
+            case "DELETE_POST" -> {
+                report.setStatus(CommunityReportStatus.TAKEN_DOWN.getCode());
+                report.setHandledAt(LocalDateTime.now());
+                reportMapper.updateById(report);
+                deleteReportedTarget(target, report.getTargetId());
+            }
+            case "WARN_USER" -> {
+                // 警告：仅标记举报已警告并记日志，不删内容（内容处置走 DELETE_POST）
+                report.setStatus(CommunityReportStatus.WARNED.getCode());
+                report.setHandledAt(LocalDateTime.now());
+                reportMapper.updateById(report);
+            }
+            case "IGNORE" -> {
+                report.setStatus(CommunityReportStatus.IGNORED.getCode());
+                report.setHandledAt(LocalDateTime.now());
+                reportMapper.updateById(report);
+                // 忽略：若帖子仍处于「举报待审」且无其他待处理举报，恢复正常
+                if (target == CommunityReportTarget.POST) {
+                    Long pending = reportMapper.selectCount(new LambdaQueryWrapper<CommunityReport>()
+                            .eq(CommunityReport::getTargetType, CommunityReportTarget.POST.getCode())
+                            .eq(CommunityReport::getTargetId, report.getTargetId())
+                            .eq(CommunityReport::getStatus, CommunityReportStatus.PENDING.getCode()));
+                    if (pending == 0) {
+                        postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                                .eq(CommunityPost::getId, report.getTargetId())
+                                .eq(CommunityPost::getStatus, CommunityPostStatus.PENDING_REVIEW.getCode())
+                                .set(CommunityPost::getStatus, CommunityPostStatus.NORMAL.getCode()));
+                        evictPostCacheDoubleDelete(report.getTargetId());
+                    }
                 }
             }
-        } else {
-            // 忽略：若帖子仍处于「举报待审」且无其他待处理举报，恢复正常
-            if (target == CommunityReportTarget.POST) {
-                Long pending = reportMapper.selectCount(new LambdaQueryWrapper<CommunityReport>()
-                        .eq(CommunityReport::getTargetType, CommunityReportTarget.POST.getCode())
-                        .eq(CommunityReport::getTargetId, report.getTargetId())
-                        .eq(CommunityReport::getStatus, CommunityReportStatus.PENDING.getCode()));
-                if (pending == 0) {
-                    postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
-                            .eq(CommunityPost::getId, report.getTargetId())
-                            .eq(CommunityPost::getStatus, CommunityPostStatus.PENDING_REVIEW.getCode())
-                            .set(CommunityPost::getStatus, CommunityPostStatus.NORMAL.getCode()));
-                    // 帖子恢复正常触发详情 + 热门榜延时双删
-                    evictPostCacheDoubleDelete(report.getTargetId());
-                }
-            }
+            default -> throw new BusinessException("处理动作不正确");
         }
         log.info("处理社区举报: reportId={}, action={}, operator=admin", reportId, action);
+    }
+
+    /** 举报处置联动软删目标：帖删除时评论同步软删；评删除时 count-1 同事务 */
+    private void deleteReportedTarget(CommunityReportTarget target, Long targetId) {
+        if (target == CommunityReportTarget.POST) {
+            postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                    .eq(CommunityPost::getId, targetId)
+                    .set(CommunityPost::getStatus, CommunityPostStatus.DELETED.getCode()));
+            // 该帖评论同步软删；帖已删列表不可见，不逐一回减 count（口径：删帖计数不动）
+            commentMapper.update(null, new LambdaUpdateWrapper<CommunityComment>()
+                    .eq(CommunityComment::getPostId, targetId)
+                    .in(CommunityComment::getStatus, List.of(0, 2))
+                    .set(CommunityComment::getStatus, 1));
+            evictPostCacheDoubleDelete(targetId);
+        } else if (target == CommunityReportTarget.COMMENT) {
+            CommunityComment comment = commentMapper.selectById(targetId);
+            if (comment != null && comment.getStatus() != null
+                    && (comment.getStatus() == 0 || comment.getStatus() == 2)) {
+                comment.setStatus(1);
+                commentMapper.updateById(comment);
+                postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                        .eq(CommunityPost::getId, comment.getPostId())
+                        .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
+                evictPostCacheDoubleDelete(comment.getPostId());
+            }
+        }
+    }
+
+    // ==================== 后台：帖子管理 ====================
+
+    /**
+     * 黑名单拦截：被屏蔽用户发帖/评论统一拒绝（两个发布入口都调，防绕过）。
+     * 决策：屏蔽仅禁新发，不删历史内容、不影响登录（与账号禁用解耦）
+     */
+    private void checkBlocked(Long userId) {
+        Long count = blacklistMapper.selectCount(new LambdaQueryWrapper<CommunityBlacklist>()
+                .eq(CommunityBlacklist::getUserId, userId));
+        if (count > 0) {
+            throw new BusinessException("你的社区发言权限已被限制，如有疑问请联系管理员");
+        }
+    }
+
+    /**
+     * 后台帖子分页：板块/标题关键字/状态筛选（管理列表不缓存，保证即时性）
+     */
+    public Map<String, Object> adminPostPage(String board, String keyword, Integer status, Long page, Long size) {
+        ensureAdmin();
+        long cur = (page != null && page > 0) ? page : 1L;
+        long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
+        String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
+        Page<PostResponseDTO> p = new Page<>(cur, sz);
+        IPage<PostResponseDTO> result = postMapper.selectAdminPostPage(p, board, kw, status);
+        result.getRecords().forEach(dto -> {
+            dto.setBoardLabel(boardLabel(dto.getBoard()));
+            dto.setSummary(cleanSummary(dto.getSummary()));
+        });
+        return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    /**
+     * 帖子审核：仅待审核（REVIEW_PENDING）可审；通过→正常，驳回→已驳回+原因（原因必填）。
+     * 审核走条件 UPDATE 防并发重复审核
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewPost(Long postId, Boolean approve, String rejectReason) {
+        ensureAdmin();
+        CommunityPost post = postMapper.selectById(postId);
+        if (post == null) {
+            throw new BusinessException("帖子不存在");
+        }
+        if (post.getStatus() == null || post.getStatus() != CommunityPostStatus.REVIEW_PENDING.getCode()) {
+            throw new BusinessException("仅待审核的帖子可以审核");
+        }
+        if (Boolean.TRUE.equals(approve)) {
+            int updated = postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                    .eq(CommunityPost::getId, postId)
+                    .eq(CommunityPost::getStatus, CommunityPostStatus.REVIEW_PENDING.getCode())
+                    .set(CommunityPost::getStatus, CommunityPostStatus.NORMAL.getCode()));
+            if (updated == 0) {
+                throw new BusinessException("帖子状态已变更，请刷新后重试");
+            }
+        } else {
+            if (rejectReason == null || rejectReason.isBlank()) {
+                throw new BusinessException("驳回原因不能为空");
+            }
+            int updated = postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                    .eq(CommunityPost::getId, postId)
+                    .eq(CommunityPost::getStatus, CommunityPostStatus.REVIEW_PENDING.getCode())
+                    .set(CommunityPost::getStatus, CommunityPostStatus.REJECTED.getCode())
+                    .set(CommunityPost::getRejectReason, rejectReason.trim()));
+            if (updated == 0) {
+                throw new BusinessException("帖子状态已变更，请刷新后重试");
+            }
+        }
+        evictPostCacheDoubleDelete(postId);
+        log.info("帖子审核: postId={}, approve={}, operator=admin", postId, approve);
+    }
+
+    /**
+     * 后台帖子删除(软删 status=1)/下架(status=3)：已删除帖为终态不可再操作。
+     * 删除时该帖评论同步软删（帖已删列表不可见，不逐一回减 count，口径同举报处置）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePostStatus(Long postId, Integer targetStatus) {
+        ensureAdmin();
+        if (targetStatus == null
+                || (targetStatus != CommunityPostStatus.DELETED.getCode()
+                && targetStatus != CommunityPostStatus.TAKEN_DOWN.getCode())) {
+            throw new BusinessException("目标状态仅支持删除或下架");
+        }
+        CommunityPost post = postMapper.selectById(postId);
+        if (post == null) {
+            throw new BusinessException("帖子不存在");
+        }
+        if (post.getStatus() == null || post.getStatus() == CommunityPostStatus.DELETED.getCode()) {
+            throw new BusinessException("帖子不存在或已删除");
+        }
+        if (post.getStatus().equals(targetStatus)) {
+            throw new BusinessException("帖子已是该状态");
+        }
+        postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                .eq(CommunityPost::getId, postId)
+                .ne(CommunityPost::getStatus, CommunityPostStatus.DELETED.getCode())
+                .set(CommunityPost::getStatus, targetStatus));
+        if (targetStatus == CommunityPostStatus.DELETED.getCode()) {
+            commentMapper.update(null, new LambdaUpdateWrapper<CommunityComment>()
+                    .eq(CommunityComment::getPostId, postId)
+                    .in(CommunityComment::getStatus, List.of(0, 2))
+                    .set(CommunityComment::getStatus, 1));
+        }
+        evictPostCacheDoubleDelete(postId);
+        log.info("后台帖子状态变更: postId={}, target={}, operator=admin", postId, targetStatus);
+    }
+
+    /**
+     * 置顶/取消（仅正常帖可置顶）：变更后删用户端列表相关缓存（详情 + 热门榜）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePostTop(Long postId, Integer value) {
+        updatePostFlag(postId, value, "top");
+        evictPostCacheDoubleDelete(postId);
+        log.info("帖子置顶变更: postId={}, value={}, operator=admin", postId, value);
+    }
+
+    /**
+     * 加精/取消（仅正常帖可加精）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePostFeature(Long postId, Integer value) {
+        updatePostFlag(postId, value, "feature");
+        evictPostCacheDoubleDelete(postId);
+        log.info("帖子加精变更: postId={}, value={}, operator=admin", postId, value);
+    }
+
+    private void updatePostFlag(Long postId, Integer value, String flag) {
+        ensureAdmin();
+        if (value == null || (value != 0 && value != 1)) {
+            throw new BusinessException("取值仅支持 0 或 1");
+        }
+        CommunityPost post = postMapper.selectById(postId);
+        if (post == null || post.getStatus() == null
+                || post.getStatus() != CommunityPostStatus.NORMAL.getCode()) {
+            throw new BusinessException("仅正常状态的帖子可操作");
+        }
+        LambdaUpdateWrapper<CommunityPost> wrapper = new LambdaUpdateWrapper<CommunityPost>()
+                .eq(CommunityPost::getId, postId);
+        if ("top".equals(flag)) {
+            wrapper.set(CommunityPost::getIsTop, value);
+        } else {
+            wrapper.set(CommunityPost::getIsFeatured, value);
+        }
+        postMapper.update(null, wrapper);
+    }
+
+    // ==================== 后台：评论管理 ====================
+
+    /**
+     * 后台评论分页：帖子/内容关键字/状态筛选
+     */
+    public Map<String, Object> adminCommentPage(Long postId, String keyword, Integer status, Long page, Long size) {
+        ensureAdmin();
+        long cur = (page != null && page > 0) ? page : 1L;
+        long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
+        String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
+        Page<AdminCommentResponseDTO> p = new Page<>(cur, sz);
+        IPage<AdminCommentResponseDTO> result = commentMapper.selectAdminCommentPage(p, postId, kw, status);
+        return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    /**
+     * 评论审核：仅待审核（status=2）可审；通过→正常，驳回→软删+count-1（同事务，复用现有计数更新）。
+     * 条件 UPDATE 防并发重复审核
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewComment(Long commentId, Boolean approve) {
+        ensureAdmin();
+        CommunityComment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new BusinessException("评论不存在");
+        }
+        if (comment.getStatus() == null || comment.getStatus() != 2) {
+            throw new BusinessException("仅待审核的评论可以审核");
+        }
+        int updated = commentMapper.update(null, new LambdaUpdateWrapper<CommunityComment>()
+                .eq(CommunityComment::getId, commentId)
+                .eq(CommunityComment::getStatus, 2)
+                .set(CommunityComment::getStatus, Boolean.TRUE.equals(approve) ? 0 : 1));
+        if (updated == 0) {
+            throw new BusinessException("评论状态已变更，请刷新后重试");
+        }
+        if (!Boolean.TRUE.equals(approve)) {
+            // 驳回软删：发布时 count 已 +1，此处同事务回减
+            postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                    .eq(CommunityPost::getId, comment.getPostId())
+                    .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
+        }
+        evictPostCacheDoubleDelete(comment.getPostId());
+        log.info("评论审核: commentId={}, approve={}, operator=admin", commentId, approve);
+    }
+
+    /**
+     * 后台删除评论（软删 status=1 + count-1 同事务）：正常/待审核可删，已删除不可重复删
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void softDeleteCommentAdmin(Long commentId) {
+        ensureAdmin();
+        CommunityComment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new BusinessException("评论不存在");
+        }
+        if (comment.getStatus() == null || comment.getStatus() == 1) {
+            throw new BusinessException("评论已删除");
+        }
+        int updated = commentMapper.update(null, new LambdaUpdateWrapper<CommunityComment>()
+                .eq(CommunityComment::getId, commentId)
+                .in(CommunityComment::getStatus, List.of(0, 2))
+                .set(CommunityComment::getStatus, 1));
+        if (updated == 0) {
+            throw new BusinessException("评论状态已变更，请刷新后重试");
+        }
+        postMapper.update(null, new LambdaUpdateWrapper<CommunityPost>()
+                .eq(CommunityPost::getId, comment.getPostId())
+                .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
+        evictPostCacheDoubleDelete(comment.getPostId());
+        log.info("后台删除评论: commentId={}, operator=admin", commentId);
+    }
+
+    // ==================== 后台：黑名单管理 ====================
+
+    /**
+     * 黑名单分页：昵称/用户名关键字筛选
+     */
+    public Map<String, Object> blacklistPage(String keyword, Long page, Long size) {
+        ensureAdmin();
+        long cur = (page != null && page > 0) ? page : 1L;
+        long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
+        String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
+        IPage<AdminBlacklistResponseDTO> result = blacklistMapper.selectAdminPage(new Page<>(cur, sz), kw);
+        return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    /**
+     * 屏蔽用户（唯一键防重，先查后插友好提示）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void addBlacklist(BlacklistDTO dto) {
+        ensureAdmin();
+        Long count = blacklistMapper.selectCount(new LambdaQueryWrapper<CommunityBlacklist>()
+                .eq(CommunityBlacklist::getUserId, dto.getUserId()));
+        if (count > 0) {
+            throw new BusinessException("该用户已在黑名单中");
+        }
+        blacklistMapper.insert(CommunityBlacklist.builder()
+                .userId(dto.getUserId())
+                .reason(dto.getReason() != null && !dto.getReason().isBlank() ? dto.getReason().trim() : null)
+                .createdAt(LocalDateTime.now())
+                .build());
+        log.info("屏蔽社区用户: userId={}, operator=admin", dto.getUserId());
+    }
+
+    /**
+     * 解除屏蔽：解除后立即可发
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void removeBlacklist(Long userId) {
+        ensureAdmin();
+        int deleted = blacklistMapper.delete(new LambdaQueryWrapper<CommunityBlacklist>()
+                .eq(CommunityBlacklist::getUserId, userId));
+        if (deleted == 0) {
+            throw new BusinessException("该用户不在黑名单中");
+        }
+        log.info("解除社区屏蔽: userId={}, operator=admin", userId);
+    }
+
+    // ==================== 后台：板块管理 ====================
+
+    /**
+     * 板块管理列表（全量含停用，带帖子数与版主昵称）
+     */
+    public List<AdminBoardResponseDTO> adminBoardList() {
+        ensureAdmin();
+        return boardMapper.selectAdminBoardList();
+    }
+
+    /**
+     * 新增/编辑板块：code 唯一校验；编辑时 code 不可改（存量帖子 board 关联存量编码）；
+     * 变更后删板块缓存，用户端导航即时生效
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveBoard(BoardSaveDTO dto) {
+        ensureAdmin();
+        if (dto.getId() == null) {
+            Long count = boardMapper.selectCount(new LambdaQueryWrapper<CommunityBoardEntity>()
+                    .eq(CommunityBoardEntity::getCode, dto.getCode()));
+            if (count > 0) {
+                throw new BusinessException("板块编码已存在");
+            }
+            boardMapper.insert(CommunityBoardEntity.builder()
+                    .code(dto.getCode())
+                    .name(dto.getName().trim())
+                    .icon(dto.getIcon())
+                    .description(dto.getDescription())
+                    .sortOrder(dto.getSortOrder() == null ? 0 : dto.getSortOrder())
+                    .moderatorId(dto.getModeratorId())
+                    .status(dto.getStatus() == null ? 1 : dto.getStatus())
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        } else {
+            CommunityBoardEntity existing = boardMapper.selectById(dto.getId());
+            if (existing == null) {
+                throw new BusinessException("板块不存在");
+            }
+            if (!existing.getCode().equals(dto.getCode())) {
+                throw new BusinessException("板块编码不可修改");
+            }
+            existing.setName(dto.getName().trim());
+            existing.setIcon(dto.getIcon());
+            existing.setDescription(dto.getDescription());
+            existing.setSortOrder(dto.getSortOrder() == null ? existing.getSortOrder() : dto.getSortOrder());
+            existing.setModeratorId(dto.getModeratorId());
+            if (dto.getStatus() != null) {
+                existing.setStatus(dto.getStatus());
+            }
+            boardMapper.updateById(existing);
+        }
+        evictBoardsCache();
+        log.info("保存社区板块: id={}, code={}, operator=admin", dto.getId(), dto.getCode());
+    }
+
+    /**
+     * 删除板块：有帖子（未删除状态）拒绝，提示先迁移帖子
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteBoard(Long boardId) {
+        ensureAdmin();
+        CommunityBoardEntity board = boardMapper.selectById(boardId);
+        if (board == null) {
+            throw new BusinessException("板块不存在");
+        }
+        Long postCount = postMapper.selectCount(new LambdaQueryWrapper<CommunityPost>()
+                .eq(CommunityPost::getBoard, board.getCode())
+                .ne(CommunityPost::getStatus, CommunityPostStatus.DELETED.getCode()));
+        if (postCount > 0) {
+            throw new BusinessException("该板块下还有 " + postCount + " 篇帖子，请先迁移后再删除");
+        }
+        boardMapper.deleteById(boardId);
+        evictBoardsCache();
+        log.info("删除社区板块: id={}, code={}, operator=admin", boardId, board.getCode());
     }
 
     // ==================== 定时兜底 ====================
@@ -955,8 +1471,25 @@ public class CommunityService {
     }
 
     private String boardLabel(String code) {
+        // 表驱动优先（走 Redis 缓存），未命中回退枚举
+        for (CommunityBoardEntity b : enabledBoards()) {
+            if (b.getCode().equals(code)) {
+                return b.getName();
+            }
+        }
         CommunityBoard board = CommunityBoard.fromCode(code);
         return board != null ? board.getLabel() : code;
+    }
+
+    /**
+     * 互动通知中的互动者昵称：匿名场景统一脱敏为「有用户」，不暴露真实身份
+     */
+    private String buildActorName(Long actorId, boolean hide) {
+        if (hide) {
+            return "有用户";
+        }
+        User actor = userMapper.selectById(actorId);
+        return actor != null ? actor.getDisplayName() : "有用户";
     }
 
     /**

@@ -40,6 +40,10 @@ public class CourseChapter {
     @TableField("audio_url")
     private String audioUrl;
 
+    // 视频地址(可选，预留扩展)
+    @TableField("video_url")
+    private String videoUrl;
+
     // 时长(秒)
     @TableField("duration")
     private Integer duration;

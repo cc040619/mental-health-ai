@@ -10,7 +10,8 @@
             <el-dropdown @command="handleCommand">
                 <div class="flex-box">
                     <el-avatar src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png" />
-                    <p class="user-name">admin</p>
+                    <p class="user-name">{{ displayName }}</p>
+                    <el-tag size="small" type="info" effect="plain" class="role-tag">{{ roleLabel }}</el-tag>
                     <el-icon><ArrowDown /></el-icon>
                 </div>
                 <template #dropdown>
@@ -23,7 +24,7 @@
     </div>
 </template>
 <script setup>
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { useAdminStore } from '@/stores/admin'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -31,6 +32,17 @@ import { logout } from '@/api/admin'
 
 const router = useRouter()
 const route = useRoute()
+
+// 用户信息（登录时写入 localStorage）：昵称优先，角色名按 userType 显示
+const userInfo = computed(() => {
+    try {
+        return JSON.parse(localStorage.getItem('userInfo') || 'null') || {}
+    } catch (e) {
+        return {}
+    }
+})
+const displayName = computed(() => userInfo.value.nickname || userInfo.value.username || '用户')
+const roleLabel = computed(() => ({ 1: '用户', 2: '管理员', 3: '咨询师' }[userInfo.value.userType] || '用户'))
 
 const handleCommand = (command) => {
     console.log(command)
@@ -77,6 +89,9 @@ const handleCollapse = () => {
         font-size: 26px;
         font-weight: bold;
         color: #1f2937;
+    }
+    .role-tag {
+        margin: 0 6px 0 8px;
     }
 }
 </style>

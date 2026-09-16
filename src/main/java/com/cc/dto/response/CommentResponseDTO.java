@@ -35,6 +35,9 @@ public class CommentResponseDTO {
     // 是否为当前访问者本人发布（用于删除按钮显隐）
     private Boolean isMine;
 
+    // 评论状态（0-正常 1-已删除 2-待审核；发布响应 status=2 时前端提示"已提交审核"）
+    private Integer status;
+
     private LocalDateTime createdAt;
 
     // 楼中楼回复（仅顶层评论携带）

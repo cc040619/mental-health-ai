@@ -40,6 +40,14 @@ public class CourseComment {
     @TableField("content")
     private String content;
 
+    // 管理员回复（单级，覆盖式更新）
+    @TableField("reply_content")
+    private String replyContent;
+
+    // 回复时间
+    @TableField("reply_at")
+    private LocalDateTime replyAt;
+
     // 评论时间
     @TableField("created_at")
     private LocalDateTime createdAt;

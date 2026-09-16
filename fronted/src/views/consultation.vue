@@ -335,10 +335,13 @@
           <span>{{ handoffData.hotline }}</span>
         </div>
         <div class="handoff-suggestion">💌 {{ handoffData.suggestion }}</div>
-        <div class="handoff-note">🌱 人工咨询师功能正在紧张筹备中，敬请期待</div>
+        <div class="handoff-note">🌱 预约后可在「我的预约」里查看安排，并与咨询师留言沟通</div>
       </div>
       <template #footer>
-        <el-button type="primary" class="scene-confirm-btn" @click="handoffDialogVisible = false">我知道了</el-button>
+        <el-button @click="handoffDialogVisible = false">我知道了</el-button>
+        <el-button type="primary" class="scene-confirm-btn" @click="goToBooking">
+          👩‍⚕️ 去预约咨询师
+        </el-button>
       </template>
     </el-dialog>
 
@@ -367,6 +370,8 @@
         </div>
       </div>
     </el-drawer>
+    <!-- 危机干预卡片：SSE crisis 事件触发弹窗（命中自伤/自杀词秒级弹出） -->
+    <CrisisSupportCard mode="dialog" v-model:visible="crisisDialogVisible" @open-plan="goCrisisSafety"/>
   </div>
 </template>
 <script setup>
@@ -379,7 +384,17 @@ import {
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {ChatRound, DeleteFilled} from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+import CrisisSupportCard from '@/components/CrisisSupportCard.vue'
 import {fetchEventSource} from '@microsoft/fetch-event-source'
+import {useRouter} from 'vue-router'
+
+const router = useRouter()
+// 危机干预卡片：SSE crisis 事件触发弹窗（命中自伤/自杀词时秒级弹出）
+const crisisDialogVisible = ref(false)
+const goCrisisSafety = () => {
+    crisisDialogVisible.value = false
+    router.push('/crisis-safety')
+}
 
 const iconUrl = new URL('@/assets/images/robot-fill.png', import.meta.url).href
 const iconUrl1 = new URL('@/assets/images/like.png', import.meta.url).href
@@ -766,6 +781,12 @@ const startAIResponse = (sessionId, userMessage) => {
       // 当前会话的AI消息
       const aiMessage = messages.value[messages.value.length - 1]
 
+      // 危机事件：用户消息命中自伤/自杀词，服务端在流最前面推送，立即弹干预卡片
+      // 不等异步情绪分析，毫秒级响应；keyword 不展示给用户（隐私/伦理）
+      if (eventName === 'crisis') {
+        crisisDialogVisible.value = true
+        return
+      }
       if (eventName === 'done') {
         isAiTyping.value = false
         ctrl.abort()
@@ -1054,6 +1075,13 @@ const requestHandoff = () => {
     handoffData.value = res
     handoffDialogVisible.value = true
   })
+}
+
+// 跳转真人咨询师预约页（预约模块上线后由 handoffAvailable/redirectPath 驱动）
+const goToBooking = () => {
+  const path = handoffData.value?.redirectPath || '/consultants'
+  handoffDialogVisible.value = false
+  router.push(path)
 }
 
 // 简单的换行逻辑

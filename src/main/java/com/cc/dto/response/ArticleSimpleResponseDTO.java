@@ -40,6 +40,15 @@ public class ArticleSimpleResponseDTO {
     // 阅读次数
     private Integer readCount;
 
+    // 点赞数
+    private Integer likeCount;
+
+    // 已通过评论数
+    private Integer commentCount;
+
+    // 收藏数
+    private Integer favoriteCount;
+
     // 状态 0:草稿 1:已发布 2:已下线
     private Integer status;
 

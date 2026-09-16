@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -309,6 +310,11 @@ public class AssessmentScoringService {
         private List<Integer> riskQuestionIndexes;
         private Integer riskScoreThreshold;
         private List<String> categoryAdvice;
+        /** 指导语（测评前展示给用户），老量表缺省为 null → 前端兜底空字符串 */
+        private String guidance;
+        /** 结果解释模板：{NORMAL:文本, MILD:..., MODERATE:..., SEVERE:...}，
+         *  仅影响新提交的报告（提交时按模板生成），历史报告不变 */
+        private Map<String, String> interpretationTemplates;
     }
 
     @Data

@@ -3,8 +3,11 @@ package com.cc.AIservice;
 import com.cc.dto.request.ConsultationSessionCreateDTO;
 import com.cc.dto.response.ConsultationMessageResponseDTO;
 import com.cc.entity.ConsultationSession;
+import com.cc.service.AiConfigService;
 import com.cc.service.ConsultationMessageService;
 import com.cc.service.ConsultationSessionService;
+import com.cc.service.CrisisPlanService;
+import com.cc.util.SensitiveWordFilter;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -18,6 +21,17 @@ import java.util.List;
 
 @Service
 public class PsychologicalSupportService {
+
+    /**
+     * ponytail: 危机标记前缀（AI 回复不会以 \u0001 开头），Controller 识别后映射为 SSE event("crisis")
+     * <p>用不可见控制字符做前缀，保证不污染正常对话内容；前端收到 crisis 事件弹卡片，不等异步情绪分析。
+     */
+    public static final String CRISIS_MARKER = "\u0001__CRISIS__:";
+
+    /** 命中危机词时追加到 system prompt 前的响应指令（语气谨慎、优先引导热线、不追问细节） */
+    private static final String CRISIS_SYSTEM_INSTRUCTION =
+            "【紧急】用户可能处于心理危机状态。请先表达关心与支持，优先引导拨打全国心理援助热线 12356，" +
+            "语气温和克制，不评判、不追问自伤细节，陪伴用户梳理当下安全。";
 
     @Resource
     @Qualifier("open-ai")
@@ -34,6 +48,15 @@ public class PsychologicalSupportService {
 
     @Resource
     private EmotionAnalysisService emotionAnalysisService;
+
+    @Resource
+    private SensitiveWordFilter sensitiveWordFilter;
+
+    @Resource
+    private CrisisPlanService crisisPlanService;
+
+    @Resource
+    private AiConfigService aiConfigService;
 
     public StructOutPut.StreamChatSession startSession(Long userId, ConsultationSessionCreateDTO createDTO) {
         // 创建数据库会话记录
@@ -90,8 +113,18 @@ public class PsychologicalSupportService {
             // 进行流式对话
             // 生成对话记忆管理
             String conversationId = "conversation_" + sessionId;
+            // 危机检测：复用 SensitiveWordFilter DFA 内存词树（crisis-words.txt），O(n) 扫描毫秒级，不查库不调 AI
+            // ponytail: 不新建 CrisisDetector——SensitiveWordFilter.findCrisisWord 即"危机检测一处实现"，社区/AI对话/测评共用
+            String crisisHit = sensitiveWordFilter.findCrisisWord(userMessage);
             // 构建系统提示词：按会话场景选择对应提示词（仅内存常量选择，零额外耗时，不引入串行AI调用）
             String systemPrompt = PromptManage.getSystemPromptByScene(session != null ? session.getScene() : null);
+            if (crisisHit != null) {
+                // 命中危机词：① @Async 记录事件（不阻塞流）② 流最前面推 crisis 标记（Controller 映射为 event("crisis")）
+                // ③ 追加 system 危机响应指令（AI 语气更谨慎、优先引导热线）
+                crisisPlanService.recordCrisisEvent(userId, CrisisPlanService.SOURCE_CHAT, crisisHit);
+                sink.next(CRISIS_MARKER + crisisHit);
+                systemPrompt = CRISIS_SYSTEM_INSTRUCTION + systemPrompt;
+            }
             Prompt prompt = new Prompt(List.of(
                     new SystemMessage(systemPrompt)
             ));
@@ -103,6 +136,8 @@ public class PsychologicalSupportService {
             // 注意：MessageChatMemoryAdvisor 会在调用前读取记忆并在调用后自动保存本轮用户消息与AI回复，
             // 此处不再手动写入 chatMemory，避免每条消息在记忆中重复导致 AI 回复复读
             chatClient.prompt(prompt)
+                    // per-request 模型参数覆盖（DB 配置 60s 缓存），改配置后下一条对话生效
+                    .options(aiConfigService.buildChatOptions())
                     .user(userMessage)
                     .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
                     .stream()

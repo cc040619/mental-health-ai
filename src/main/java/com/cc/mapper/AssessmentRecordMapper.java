@@ -3,6 +3,8 @@ package com.cc.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.cc.dto.response.AdminRecordResponseDTO;
+import com.cc.dto.response.AlertResponseDTO;
 import com.cc.dto.response.AssessmentRecordResponseDTO;
 import com.cc.dto.response.AssessmentTrendResponseDTO;
 import com.cc.entity.AssessmentRecord;
@@ -62,4 +64,62 @@ public interface AssessmentRecordMapper extends BaseMapper<AssessmentRecord> {
             """)
     List<AssessmentTrendResponseDTO> selectTrend(@Param("userId") Long userId,
                                                  @Param("scaleId") Long scaleId);
+
+    /**
+     * 管理端测评记录分页：关联量表名 + 用户昵称，多条件筛选
+     */
+    @Select("""
+            <script>
+            SELECT r.id, r.user_id, u.nickname AS user_nickname, r.scale_id, s.name AS scale_name,
+                   r.total_score, r.level, r.risk_flag, r.completed_at
+            FROM assessment_record r
+            LEFT JOIN assessment_scale s ON s.id = r.scale_id
+            LEFT JOIN user u ON u.id = r.user_id
+            <where>
+                r.status = 'COMPLETED'
+                <if test="scaleId != null">AND r.scale_id = #{scaleId}</if>
+                <if test="keyword != null and keyword != ''">
+                    AND u.nickname LIKE CONCAT('%', #{keyword}, '%')
+                </if>
+                <if test="level != null and level != ''">AND r.level = #{level}</if>
+                <if test="startDate != null and startDate != ''">
+                    AND r.completed_at <![CDATA[>=]]> #{startDate}
+                </if>
+                <if test="endDate != null and endDate != ''">
+                    AND r.completed_at <![CDATA[<=]]> #{endDate}
+                </if>
+            </where>
+            ORDER BY r.completed_at DESC
+            </script>
+            """)
+    IPage<AdminRecordResponseDTO> selectAdminPage(Page<AdminRecordResponseDTO> page,
+                                                  @Param("scaleId") Long scaleId,
+                                                  @Param("keyword") String keyword,
+                                                  @Param("level") String level,
+                                                  @Param("startDate") String startDate,
+                                                  @Param("endDate") String endDate);
+
+    /**
+     * 高危预警分页：level IN (MODERATE,SEVERE) OR risk_flag=1
+     */
+    @Select("""
+            <script>
+            SELECT r.id, r.user_id, u.nickname AS user_nickname, r.scale_id, s.name AS scale_name,
+                   r.total_score, r.level, r.risk_flag, r.intervention_status,
+                   r.intervention_note, r.intervened_at, r.completed_at
+            FROM assessment_record r
+            LEFT JOIN assessment_scale s ON s.id = r.scale_id
+            LEFT JOIN user u ON u.id = r.user_id
+            <where>
+                r.status = 'COMPLETED'
+                AND (r.level IN ('MODERATE', 'SEVERE') OR r.risk_flag = 1)
+                <if test="level != null and level != ''">AND r.level = #{level}</if>
+                <if test="status != null">AND r.intervention_status = #{status}</if>
+            </where>
+            ORDER BY r.completed_at DESC
+            </script>
+            """)
+    IPage<AlertResponseDTO> selectAlertsPage(Page<AlertResponseDTO> page,
+                                             @Param("level") String level,
+                                             @Param("status") Integer status);
 }

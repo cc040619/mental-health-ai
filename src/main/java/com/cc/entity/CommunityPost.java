@@ -47,7 +47,19 @@ public class CommunityPost {
     @TableField("is_anonymous")
     private Integer isAnonymous;
 
-    // 0-正常 1-已删除 2-举报待审 3-已下架
+    // 0-否 1-置顶（置顶不设时长，扩展路径：加 top_expire_at + 定时任务）
+    @TableField("is_top")
+    private Integer isTop;
+
+    // 0-否 1-加精
+    @TableField("is_featured")
+    private Integer isFeatured;
+
+    // 审核驳回原因（仅 REJECTED 状态有值）
+    @TableField("reject_reason")
+    private String rejectReason;
+
+    // 0-正常 1-已删除 2-举报待审 3-已下架 4-待审核 5-已驳回
     private Integer status;
 
     @TableField("like_count")

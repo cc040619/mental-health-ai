@@ -69,6 +69,18 @@ public class AssessmentRecord {
     @TableField("risk_flag")
     private Integer riskFlag;
 
+    // 干预状态 0-未处理 1-已干预 2-已处理
+    @TableField("intervention_status")
+    private Integer interventionStatus;
+
+    // 干预备注
+    @TableField("intervention_note")
+    private String interventionNote;
+
+    // 干预时间
+    @TableField("intervened_at")
+    private LocalDateTime intervenedAt;
+
     // 开始作答时间
     @TableField("started_at")
     private LocalDateTime startedAt;

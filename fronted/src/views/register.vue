@@ -23,12 +23,12 @@
                     </el-input>
                 </el-form-item>
                 <el-form-item label="昵称" prop="nickname">
-                    <el-input v-model="formData.nickname" placeholder="请输入昵称(可选)" size="large">
+                    <el-input v-model="formData.nickname" placeholder="请输入昵称" size="large">
                         <template #prefix>😊</template>
                     </el-input>
                 </el-form-item>
                 <el-form-item label="手机号" prop="phone">
-                    <el-input v-model="formData.phone" placeholder="请输入手机号(可选)" size="large">
+                    <el-input v-model="formData.phone" placeholder="请输入手机号" size="large">
                         <template #prefix>📱</template>
                     </el-input>
                 </el-form-item>

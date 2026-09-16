@@ -49,6 +49,19 @@
             </div>
         </div>
 
+        <!-- ===== 首页轮播图：启用中按排序展示（空数据隐藏） ===== -->
+        <div v-if="banners.length" class="banner-carousel">
+            <el-carousel :interval="4000" height="220px" arrow="hover" indicator-position="outside">
+                <el-carousel-item v-for="b in banners" :key="b.id">
+                    <div class="banner-item" @click="openBanner(b)"
+                         :style="{ cursor: b.linkUrl ? 'pointer' : 'default' }">
+                        <el-image :src="b.imageUrl" fit="cover" class="banner-image" />
+                        <span v-if="b.title" class="banner-title">{{ b.title }}</span>
+                    </div>
+                </el-carousel-item>
+            </el-carousel>
+        </div>
+
         <!-- ===== 底部手写签名装饰 ===== -->
         <div class="bottom-deco">
             <div class="bottom-dashed"></div>
@@ -59,8 +72,22 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getBanners } from '@/api/notify'
 
 const router = useRouter()
+
+// 首页轮播（后端已过滤启用中并按排序返回，空数据不渲染）
+const banners = ref([])
+onMounted(() => {
+    getBanners().then(data => {
+        banners.value = data || []
+    }).catch(() => {})
+})
+
+// 轮播跳转（后端已白名单校验仅 http/https）
+const openBanner = (b) => {
+    if (b.linkUrl) window.open(b.linkUrl, '_blank')
+}
 
 
 
@@ -134,8 +161,7 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
     color: $text-primary;
     font-family: $font-rounded;
     padding: 5rem 0;
-    height: calc(100vh - 285px);
-    min-height: 480px;
+    min-height: max(calc(100vh - 285px), 480px); // 有轮播图时内容可撑开容器
     display: flex;
     align-items: center;
     justify-content: center;
@@ -430,6 +456,13 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
 
     // ===== 响应式 =====
     @media (max-width: 768px) {
+        // 小屏 content 竖排变高，轮播回文档流防重叠
+        flex-direction: column;
+        .banner-carousel {
+            position: static;
+            transform: none;
+            margin-top: 20px;
+        }
         .content {
             flex-direction: column;
             gap: 24px;
@@ -448,6 +481,48 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
         .floating-decorations {
             .float-emoji {
                 font-size: 1rem;
+            }
+        }
+    }
+
+    // ===== 首页轮播图（手账风纸卡）=====
+    // 绝对定位脱流：不参与 flex 居中计算，保证标题/机器人位置不变；
+    // top 依据 content 垂直居中（高约 280px）+ 40px 间距锚定在按钮下方空白区
+    .banner-carousel {
+        position: absolute;
+        top: calc(50% + 180px);
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(820px, 90%); // 与 .content 内容宽对齐（500 + 40 + 280）
+        background: $bg-card;
+        border: 2px dashed $border-color;
+        border-radius: $radius-lg;
+        padding: 12px;
+        box-shadow: $shadow-card;
+        z-index: 2;
+
+        .banner-item {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: $radius-md;
+            overflow: hidden;
+
+            .banner-image {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+
+            .banner-title {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                padding: 8px 16px;
+                background: linear-gradient(transparent, rgba(92, 74, 58, 0.55));
+                color: #fff;
+                font-size: 14px;
             }
         }
     }

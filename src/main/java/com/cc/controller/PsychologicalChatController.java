@@ -85,6 +85,15 @@ public class PsychologicalChatController {
         // 开始流式对话（AI 调用异常时降级为 SSE 错误事件，保证响应始终为 text/event-stream）
         return psychologicalSupportService.streamPsychologicalChat(userId, CurrentUserUtils.isAdmin(), streamDTO.getSessionId(), streamDTO.getUserMessage())
                 .map(Fragment -> {
+                    // 危机标记识别：命中危机词时 service 在流最前面推 CRISIS_MARKER+keyword，映射为 event("crisis")
+                    // 前端收到 crisis 事件立即弹 CrisisSupportCard（dialog 形态），不等异步情绪分析
+                    if (Fragment.startsWith(PsychologicalSupportService.CRISIS_MARKER)) {
+                        String keyword = Fragment.substring(PsychologicalSupportService.CRISIS_MARKER.length());
+                        return ServerSentEvent.<String>builder()
+                                .event("crisis")
+                                .data(JSONUtil.toJsonStr(Map.of("type", "crisis", "keyword", keyword)))
+                                .build();
+                    }
                     return ServerSentEvent.<String>builder()
                             .event("message")
                             .data(JSONUtil.toJsonStr(Result.ok(Map.of("content", Fragment, "type", "normal"))))

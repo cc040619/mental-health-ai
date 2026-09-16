@@ -42,7 +42,7 @@ public class CommunityComment {
     @TableField("is_anonymous")
     private Integer isAnonymous;
 
-    // 0-正常 1-已删除
+    // 0-正常 1-已删除 2-待审核(先审后发)
     private Integer status;
 
     @TableField("created_at")

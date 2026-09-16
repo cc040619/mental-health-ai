@@ -274,7 +274,12 @@ const submitComment = (parentId) => {
   commentSubmitting.value = true
   createComment(postId.value, { content, parentId, isAnonymous: commentAnonymous.value })
     .then(data => {
-      ElMessage.success('评论已发送 🌿')
+      // 先审后发开启时新评论状态为 2-待审核，通过后展示
+      if (data.status === 2) {
+        ElMessage.success('评论已提交审核，通过后展示 🌿')
+      } else {
+        ElMessage.success('评论已发送 🌿')
+      }
       if (parentId) {
         replyParent.value = null
         replyContent.value = ''

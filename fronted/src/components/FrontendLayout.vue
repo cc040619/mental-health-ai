@@ -7,9 +7,9 @@
       <div class="navbar-inner">
         <div class="brand-section">
           <div class="brand-sticker">
-            <el-image style="width: 40px; height: 40px" :src="iconUrl" alt="品牌logo" class="brand-logo"/>
+            <el-image style="width: 40px; height: 40px" :src="systemLogo || iconUrl" alt="品牌logo" class="brand-logo"/>
           </div>
-          <h1 class="brand-name">📖 心理健康AI助手</h1>
+          <h1 class="brand-name">📖 {{ systemName }}</h1>
         </div>
         <div class="nav-section">
           <router-link to="/" class="nav-link">✨ 首页</router-link>
@@ -17,9 +17,15 @@
           <router-link to="/emotion-diary" class="nav-link" v-if="isLoggedIn">📝 情绪日记</router-link>
           <router-link to="/assessment" class="nav-link" v-if="isLoggedIn">🧭 心理测评</router-link>
           <router-link to="/course" class="nav-link" v-if="isLoggedIn">🧘 心理课程</router-link>
+          <router-link to="/consultants" class="nav-link" v-if="isLoggedIn">👩‍⚕️ 预约咨询</router-link>
           <router-link to="/daily-practice" class="nav-link" v-if="isLoggedIn">🌸 每日一练</router-link>
           <router-link to="/community" class="nav-link" v-if="isLoggedIn">🌱 暖心社区</router-link>
           <router-link to="/knowledge" class="nav-link">📚 知识库</router-link>
+          <span v-if="isLoggedIn" class="nav-link bell-link" @click="goNotifications">
+            <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0" class="bell-badge">
+              <span class="bell-icon">🔔</span>
+            </el-badge>
+          </span>
           <router-link to="/profile" class="nav-link" v-if="isLoggedIn">👤 个人中心</router-link>
           <el-button v-if="isLoggedIn" class="logout-btn" @click="handleLogout">退出登录</el-button>
           <template v-else>
@@ -38,25 +44,56 @@
     </div>
     <div class="footer-container">
       <div class="footer-bottom">
-        <p>&copy; 2026 心理健康AI助手. All rights reserved.</p>
+        <p>&copy; 2026 {{ systemName }}. All rights reserved.</p>
       </div>
     </div>
     <!-- 全局音频播放器：切路由不销毁，支持后台播放 -->
     <AudioPlayer/>
+    <!-- 危机干预浮动入口：登录用户全站可见，点击展开热线卡片 -->
+    <CrisisSupportCard v-if="isLoggedIn" mode="floating" @open-plan="goCrisisSafety"/>
   </div>
 </template>
 <script setup>
-import {ref, onMounted} from 'vue'
+import {ref, onMounted, onBeforeUnmount} from 'vue'
 import {logout} from '@/api/admin'
+import {getUnreadCount} from '@/api/notify'
+import {getPublicSettings} from '@/api/frontend'
 import {useRouter} from 'vue-router'
 import {ElMessageBox} from 'element-plus'
 import AudioPlayer from '@/components/AudioPlayer.vue'
+import CrisisSupportCard from '@/components/CrisisSupportCard.vue'
 
 const router = useRouter()
+
+// 系统名称/Logo：读公开设置接口（白名单 key），失败时用默认值兜底，接口挂了不影响页面
+const systemName = ref('心理健康AI助手')
+const systemLogo = ref('')
+
+// 危机卡片「填写安全计划」入口 → 跳转安全计划页
+const goCrisisSafety = () => {
+  router.push('/crisis-safety')
+}
 
 const iconUrl = new URL('@/assets/images/机器人.png', import.meta.url).href
 
 const isLoggedIn = ref(false)
+const unreadCount = ref(0)
+
+// 未读数轮询：进入页面拉取一次，之后每 30 秒节流轮询；离开页面清理定时器
+let pollTimer = null
+const fetchUnread = () => {
+  if (localStorage.getItem('token') === null) return
+  getUnreadCount().then(data => {
+    unreadCount.value = data?.count || 0
+  }).catch(() => {})
+}
+
+const goNotifications = () => {
+  router.push('/notifications')
+}
+
+// 通知中心已读操作后即时刷新徽标（浏览器原生事件，避免为一个数字引全局 store）
+const onUnreadChanged = () => fetchUnread()
 
 // 登出（弹窗确认）
 const handleLogout = () => {
@@ -79,6 +116,24 @@ const handleLogout = () => {
 
 onMounted(() => {
   isLoggedIn.value = localStorage.getItem('token') !== null
+  if (isLoggedIn.value) {
+    fetchUnread()
+    pollTimer = setInterval(fetchUnread, 30000)
+    window.addEventListener('notify-unread-changed', onUnreadChanged)
+  }
+  // 拉取公开系统设置（静默失败，保留默认值）
+  getPublicSettings().then(data => {
+    if (data?.systemName) systemName.value = data.systemName
+    if (data?.systemLogo) systemLogo.value = data.systemLogo
+  }).catch(() => {})
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  window.removeEventListener('notify-unread-changed', onUnreadChanged)
 })
 </script>
 <style scoped lang="scss">
@@ -244,6 +299,27 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
           height: 2.5px;
           background: $primary-dark;
         }
+      }
+    }
+
+    // ===== 手账风：通知铃铛 =====
+    .bell-link {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 8px;
+
+      .bell-icon {
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      :deep(.el-badge__content) {
+        background: $primary;
+        border: none;
+        font-family: $font-rounded;
+        font-weight: 600;
+        box-shadow: 0 1px 4px rgba(196, 112, 92, 0.4);
       }
     }
 

@@ -30,7 +30,7 @@
                 <div class="summary-content" v-if="articleDetail.summary ">
                     <p>{{ articleDetail.summary }}</p>
                 </div>
-                <div :style="{marginTop: '20px'}" class="flex-box">
+                <div :style="{marginTop: '20px'}" class="flex-box stats-box">
                    <div class="item flex-box">
                         <el-icon><Avatar /></el-icon>
                         <span>{{ articleDetail.authorName }}</span>
@@ -39,16 +39,40 @@
                         <el-icon><Platform /></el-icon>
                         <span>{{ articleDetail.readCount }} 次阅读</span>
                     </div>
-                    <!-- 收藏按钮（登录后显示） -->
-                    <el-button
-                        v-if="isLoggedIn"
-                        class="favorite-btn"
-                        :class="{ favorited: isFavorited }"
-                        :loading="favoriteLoading"
-                        @click="toggleFavorite"
-                    >
-                        {{ isFavorited ? '⭐ 已收藏' : '☆ 收藏' }}
-                    </el-button>
+                    <div class="item flex-box">
+                        <el-icon><Pointer /></el-icon>
+                        <span>{{ likeCount }} 点赞</span>
+                    </div>
+                    <div class="item flex-box">
+                        <el-icon><ChatDotSquare /></el-icon>
+                        <span>{{ commentCount }} 评论</span>
+                    </div>
+                    <div class="item flex-box">
+                        <el-icon><Star /></el-icon>
+                        <span>{{ favoriteCount }} 收藏</span>
+                    </div>
+                    <div class="action-btns">
+                        <!-- 点赞按钮（登录后显示） -->
+                        <el-button
+                            v-if="isLoggedIn"
+                            class="like-btn"
+                            :class="{ liked: isLiked }"
+                            :loading="likeLoading"
+                            @click="toggleLike"
+                        >
+                            {{ isLiked ? '❤️ 已赞' : '♡ 点赞' }}
+                        </el-button>
+                        <!-- 收藏按钮（登录后显示） -->
+                        <el-button
+                            v-if="isLoggedIn"
+                            class="favorite-btn"
+                            :class="{ favorited: isFavorited }"
+                            :loading="favoriteLoading"
+                            @click="toggleFavorite"
+                        >
+                            {{ isFavorited ? '⭐ 已收藏' : '☆ 收藏' }}
+                        </el-button>
+                    </div>
                 </div>
             </div>
 
@@ -64,16 +88,82 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ===== 手账风：便签卡片 3 - 评论区 ===== -->
+            <div class="diary-card comment-card">
+                <div class="tape tape-green"></div>
+                <p class="title">💬 文章评论</p>
+
+                <!-- 发表评论（登录后显示） -->
+                <div class="comment-form" v-if="isLoggedIn">
+                    <el-input
+                        v-model="commentForm.content"
+                        type="textarea"
+                        :rows="3"
+                        maxlength="500"
+                        show-word-limit
+                        placeholder="写下你的想法～（评论发表后需审核通过才会展示）"
+                        class="comment-input"
+                    />
+                    <div class="comment-form-footer">
+                        <span class="comment-tip">📝 评论审核通过后会对所有人可见</span>
+                        <el-button
+                            type="primary"
+                            class="submit-btn"
+                            :loading="commentSubmitting"
+                            :disabled="!commentForm.content.trim()"
+                            @click="submitComment"
+                        >
+                            发表评论
+                        </el-button>
+                    </div>
+                </div>
+                <!-- 未登录提示 -->
+                <div class="login-tip" v-else>
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>请先登录后再发表评论</span>
+                </div>
+
+                <!-- 评论列表（仅展示已通过评论） -->
+                <div class="comment-list">
+                    <div v-if="commentList.length === 0" class="empty-comment">
+                        🌱 暂无评论，期待你的声音～
+                    </div>
+                    <div v-else>
+                        <div v-for="c in commentList" :key="c.id" class="comment-item">
+                            <el-avatar :size="40" :src="c.userAvatar">{{ c.userName?.[0] || '匿' }}</el-avatar>
+                            <div class="comment-body">
+                                <div class="comment-head">
+                                    <span class="comment-nickname">{{ c.userName || '匿名用户' }}</span>
+                                    <span class="comment-time">{{ dayjs(c.createdAt).format('YYYY-MM-DD HH:mm') }}</span>
+                                </div>
+                                <div class="comment-content">{{ c.content }}</div>
+                            </div>
+                        </div>
+                        <!-- 分页 -->
+                        <el-pagination
+                            v-if="commentTotal > commentPage.size"
+                            class="comment-pagination"
+                            background
+                            layout="prev, pager, next"
+                            :current-page="commentPage.page"
+                            :page-size="commentPage.size"
+                            :total="commentTotal"
+                            @current-change="onCommentPageChange"
+                        />
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getKnowledgeDetail } from '@/api/frontend'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { getKnowledgeDetail, toggleArticleLike, getArticleComments, createArticleComment, reportReadDuration } from '@/api/frontend'
 import { checkFavorite, addFavorite, removeFavorite, recordBrowseHistory } from '@/api/user'
 import { ElMessage } from 'element-plus'
 import { dayjs } from 'element-plus'
-import { Avatar } from '@element-plus/icons-vue'
+import { Avatar, Pointer, ChatDotSquare, Star, InfoFilled } from '@element-plus/icons-vue'
 
 const iconUrl = new URL('@/assets/images/book.png', import.meta.url).href
 
@@ -86,15 +176,30 @@ const isLoggedIn = ref(false)
 const isFavorited = ref(false)
 const favoriteLoading = ref(false)
 
+// 点赞与计数（来自详情接口；点赞/收藏 toggle 后由前端即时更新）
+const isLiked = ref(false)
+const likeLoading = ref(false)
+const likeCount = ref(0)
+const commentCount = ref(0)
+const favoriteCount = ref(0)
+
+// 评论区
+const commentList = ref([])
+const commentTotal = ref(0)
+const commentPage = reactive({ page: 1, size: 10 })
+const commentForm = reactive({ content: '' })
+const commentSubmitting = ref(false)
+
+// 阅读时长上报（前台累加，离开/隐藏时上报，30 秒内重复忽略；单次上限 7200 秒与后端 @Max 对齐）
+let visibleSince = Date.now()
+let lastReportAt = Date.now()
+
 const formatContent = (content) => {
   if (!content) return ''
-
-  // 基本的HTML清理和格式化
   let formatted = content
       .replace(/\n/g, '<br>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-
   return formatted
 }
 
@@ -117,17 +222,19 @@ const recordHistory = async () => {
     }
 }
 
-// 切换收藏状态
+// 切换收藏状态（同步本地 favoriteCount 即时展示）
 const toggleFavorite = async () => {
     favoriteLoading.value = true
     try {
         if (isFavorited.value) {
             await removeFavorite(props.id)
             isFavorited.value = false
+            favoriteCount.value = Math.max(0, favoriteCount.value - 1)
             ElMessage.success('已取消收藏')
         } else {
             await addFavorite(props.id)
             isFavorited.value = true
+            favoriteCount.value += 1
             ElMessage.success('收藏成功 ⭐')
         }
     } catch (e) {
@@ -137,9 +244,95 @@ const toggleFavorite = async () => {
     }
 }
 
+// 点赞 toggle（同步本地 likeCount 即时展示）
+const toggleLike = async () => {
+    likeLoading.value = true
+    try {
+        const res = await toggleArticleLike(props.id)
+        isLiked.value = res.liked
+        likeCount.value = res.likeCount
+    } catch (e) {
+        // 错误已由拦截器统一提示
+    } finally {
+        likeLoading.value = false
+    }
+}
+
+// 加载评论列表（仅 status=1，对所有访客可见）
+const loadComments = async () => {
+    try {
+        const res = await getArticleComments(props.id, {
+            page: commentPage.page,
+            size: commentPage.size
+        })
+        commentList.value = res.records || []
+        commentTotal.value = res.total || 0
+    } catch (e) {
+        // 加载失败静默，列表为空
+    }
+}
+
+// 翻页
+const onCommentPageChange = (p) => {
+    commentPage.page = p
+    loadComments()
+}
+
+// 发表评论（过敏感词过滤，默认待审核；命中敏感词由后端 BusinessException 抛出）
+const submitComment = async () => {
+    const content = commentForm.content.trim()
+    if (!content) return
+    commentSubmitting.value = true
+    try {
+        await createArticleComment(props.id, { content })
+        ElMessage.success('评论已提交，审核通过后展示 🌱')
+        commentForm.content = ''
+    } catch (e) {
+        // 错误已由拦截器统一提示
+    } finally {
+        commentSubmitting.value = false
+    }
+}
+
+// 上报阅读时长（30 秒内重复忽略，单次上限 2 小时）
+const reportReadDurationOnce = async () => {
+    if (!isLoggedIn.value) return
+    const now = Date.now()
+    // ponytail: 30 秒内重复忽略——前端节流，后端按 created_at 距上次更新再兜底
+    if (now - lastReportAt < 30000) return
+    let seconds = Math.floor((now - visibleSince) / 1000)
+    if (seconds < 1) return
+    if (seconds > 7200) seconds = 7200  // 与后端 ReadDurationDTO @Max(7200) 对齐
+    lastReportAt = now
+    visibleSince = now  // 重置累加基准
+    try {
+        await reportReadDuration(props.id, { seconds })
+    } catch (e) {
+        // 上报失败不影响阅读体验
+    }
+}
+
+// 页面可见性变化（隐藏时上报、可见时重置累加基准，不计隐藏时段）
+const onVisibilityChange = () => {
+    if (document.hidden) {
+        reportReadDurationOnce()
+    } else {
+        visibleSince = Date.now()
+    }
+}
+
+// 页面即将卸载（刷新/关闭/路由跳转）时尽力上报
+const onBeforeUnload = () => {
+    reportReadDurationOnce()
+}
+
 onMounted(() => {
     getKnowledgeDetail(props.id).then(res => {
         articleDetail.value = res
+        // 同步计数到本地（点赞/评论/收藏）
+        likeCount.value = res.likeCount || 0
+        commentCount.value = res.commentCount || 0
+        favoriteCount.value = res.favoriteCount || 0
     })
     // 登录用户：检查收藏状态 + 上报浏览历史
     isLoggedIn.value = localStorage.getItem('token') !== null
@@ -147,6 +340,20 @@ onMounted(() => {
         checkFavoriteStatus()
         recordHistory()
     }
+    // 评论列表对所有访客可见
+    loadComments()
+    // 初始化阅读时长计时
+    visibleSince = Date.now()
+    lastReportAt = Date.now()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('beforeunload', onBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+    // 离开页面上报剩余阅读时长
+    reportReadDurationOnce()
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
 
@@ -214,9 +421,38 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
             }
         }
 
+        // ===== 手账风：操作按钮容器（点赞/收藏，靠右） =====
+        .action-btns {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
+        }
+
+        // ===== 手账风：点赞按钮 =====
+        :deep(.like-btn) {
+            font-family: $font-rounded;
+            background: transparent;
+            border: 1.5px dashed $primary;
+            color: $primary-dark;
+            border-radius: $radius-md;
+            padding: 6px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.25s ease;
+            &:hover {
+                background: $primary-light;
+                border-style: solid;
+                transform: translateY(-1px);
+            }
+            &.liked {
+                background: linear-gradient(135deg, $accent-pink, $primary-light);
+                border-style: solid;
+                color: $primary-darker;
+            }
+        }
+
         // ===== 手账风：收藏按钮 =====
         :deep(.favorite-btn) {
-            margin-left: auto;
             font-family: $font-rounded;
             background: transparent;
             border: 1.5px dashed $primary;
@@ -498,6 +734,136 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
     background: rgba(247, 232, 166, 0.55);
     transform: rotate(3deg);
 }
+.tape-green {
+    left: 36px;
+    background: rgba(184, 216, 190, 0.55);
+    transform: rotate(-3deg);
+}
+
+// ===== 手账风：评论区 =====
+.comment-card {
+    .comment-form {
+        margin-bottom: 24px;
+
+        :deep(.comment-input) {
+            .el-textarea__inner {
+                background: $bg-input;
+                border: 1.5px dashed $border-color;
+                border-radius: $radius-md;
+                font-family: $font-rounded;
+                color: $text-primary;
+                font-size: 14px;
+                line-height: 1.7;
+                padding: 12px 14px;
+                &:focus {
+                    border-color: $primary;
+                    box-shadow: $shadow-input-focus;
+                }
+            }
+        }
+
+        .comment-form-footer {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            .comment-tip {
+                font-size: 12px;
+                color: $text-secondary;
+                font-family: $font-rounded;
+            }
+            :deep(.submit-btn) {
+                font-family: $font-rounded;
+                background: linear-gradient(135deg, $primary, $primary-dark);
+                border: none;
+                color: #fff;
+                border-radius: $radius-md;
+                padding: 8px 22px;
+                font-size: 14px;
+                font-weight: 600;
+                box-shadow: $shadow-button;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                &:hover:not(:disabled) {
+                    transform: translateY(-2px);
+                    box-shadow: 0 5px 0 $primary-darker, 0 6px 12px rgba(180, 140, 100, 0.25);
+                }
+                &:active:not(:disabled) {
+                    transform: translateY(1px);
+                    box-shadow: 0 1px 0 $primary-darker, 0 2px 4px rgba(180, 140, 100, 0.15);
+                }
+                &:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+            }
+        }
+    }
+
+    .login-tip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+        background: rgba(247, 232, 166, 0.25);
+        border: 1px dashed $divider;
+        border-radius: $radius-md;
+        color: $text-secondary;
+        font-size: 14px;
+    }
+
+    .comment-list {
+        margin-top: 8px;
+        .empty-comment {
+            padding: 36px 16px;
+            text-align: center;
+            color: $text-placeholder;
+            font-family: $font-handwritten;
+            font-size: 16px;
+        }
+
+        .comment-item {
+            display: flex;
+            gap: 14px;
+            padding: 16px 0;
+            border-bottom: 1px dashed $divider;
+            &:last-child {
+                border-bottom: none;
+            }
+
+            .comment-body {
+                flex: 1;
+                min-width: 0;
+                .comment-head {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 6px;
+                    .comment-nickname {
+                        font-weight: 600;
+                        color: $text-primary;
+                        font-size: 14px;
+                    }
+                    .comment-time {
+                        color: $text-placeholder;
+                        font-size: 12px;
+                    }
+                }
+                .comment-content {
+                    color: $text-regular;
+                    font-size: 14px;
+                    line-height: 1.7;
+                    word-break: break-word;
+                }
+            }
+        }
+
+        .comment-pagination {
+            margin-top: 20px;
+            justify-content: center;
+        }
+    }
+}
 
 // ===== 手账风：Element Plus 组件覆盖（穿透） =====
 .articleDetail-container {
@@ -531,6 +897,15 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
     :deep(.el-image) {
         border-radius: $radius-md;
         filter: drop-shadow(0 2px 4px rgba(180, 140, 100, 0.2));
+    }
+
+    // el-avatar 圆角与轻阴影（评论区头像）
+    :deep(.el-avatar) {
+        background: $accent-yellow;
+        color: $primary-darker;
+        font-weight: 600;
+        font-family: $font-rounded;
+        box-shadow: 0 2px 6px rgba(180, 140, 100, 0.15);
     }
 
     // el-icon 颜色

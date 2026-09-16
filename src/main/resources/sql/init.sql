@@ -389,23 +389,29 @@ VALUES (28, 4, '2025-11-11', 6, '平静', '开心', '开心', 4, 2,
 DROP TABLE IF EXISTS `knowledge_article`;
 CREATE TABLE `knowledge_article`
 (
-    `id`           varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID(UUID)',
-    `category_id`  bigint                                                        NOT NULL COMMENT '分类ID',
-    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章标题',
-    `summary`      text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '文章摘要',
-    `content`      longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '文章内容',
-    `cover_image`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图片',
-    `tags`         varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '标签',
-    `author_id`    bigint                                                        NULL DEFAULT NULL COMMENT '作者ID',
-    `read_count`   int                                                           NULL DEFAULT 0 COMMENT '阅读次数',
-    `status`       tinyint                                                       NULL DEFAULT 1 COMMENT '状态 1:已发布',
-    `published_at` datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
-    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `id`              varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID(UUID)',
+    `category_id`     bigint                                                        NOT NULL COMMENT '分类ID',
+    `title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章标题',
+    `summary`         text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '文章摘要',
+    `content`         longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '文章内容',
+    `cover_image`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图片',
+    `tags`            varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '标签',
+    `author_id`       bigint                                                        NULL DEFAULT NULL COMMENT '作者ID',
+    `read_count`      int                                                           NULL DEFAULT 0 COMMENT '阅读次数',
+    `like_count`      int                                                           NOT NULL DEFAULT 0 COMMENT '点赞数(冗余字段,article_like 维护)',
+    `comment_count`   int                                                           NOT NULL DEFAULT 0 COMMENT '已通过评论数(冗余字段,article_comment 维护)',
+    `favorite_count`  int                                                           NOT NULL DEFAULT 0 COMMENT '收藏数(冗余字段,user_favorite 维护)',
+    `status`          tinyint                                                       NULL DEFAULT 1 COMMENT '状态 1:已发布',
+    `published_at`    datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
+    `created_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `author_id` (`author_id` ASC) USING BTREE,
     INDEX `idx_category_article` (`category_id` ASC, `published_at` ASC) USING BTREE,
     INDEX `idx_title` (`title` ASC) USING BTREE,
+    INDEX `idx_like_count` (`like_count` ASC) USING BTREE,
+    INDEX `idx_comment_count` (`comment_count` ASC) USING BTREE,
+    INDEX `idx_favorite_count` (`favorite_count` ASC) USING BTREE,
     CONSTRAINT `knowledge_article_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `knowledge_category` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT `knowledge_article_ibfk_2` FOREIGN KEY (`author_id`) REFERENCES `user` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB
@@ -420,38 +426,38 @@ INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440001', 1, '如何识别和管理焦虑情绪',
         '焦虑是现代生活中常见的情绪反应，学会识别和管理焦虑对心理健康至关重要。',
         '<p>焦虑是一种正常的情绪反应，但过度的焦虑可能会影响我们的日常生活。本文将介绍如何识别焦虑的症状，以及一些有效的管理方法。</p><h3>识别焦虑的症状</h3><ul><li>心跳加速、出汗</li><li>呼吸急促</li><li>思维混乱</li><li>难以集中注意力</li></ul><h3>管理焦虑的方法</h3><ol><li>深呼吸练习</li><li>正念冥想</li><li>适度运动</li><li>寻求专业帮助</li></ol>',
-        '', '焦虑,情绪管理,心理健康', 1, 15, 1, '2025-09-01 10:00:00', '2025-09-01 10:00:00', '2025-09-01 10:00:00');
+        '', '焦虑,情绪管理,心理健康', 1, 15, 0, 0, 0, 1, '2025-09-01 10:00:00', '2025-09-01 10:00:00', '2025-09-01 10:00:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440002', 2, '情绪调节的五个有效策略', '掌握情绪调节技巧，让生活更加平衡和谐。',
         '<p>情绪调节是心理健康的重要组成部分。以下是五个经过科学验证的情绪调节策略：</p><h3>1. 认知重构</h3><p>学会从不同角度看待问题，挑战负面思维模式。</p><h3>2. 情绪标记</h3><p>准确识别和命名自己的情绪状态。</p><h3>3. 渐进式肌肉放松</h3><p>通过身体放松来缓解情绪紧张。</p><h3>4. 表达性写作</h3><p>通过写作来处理复杂的情绪体验。</p><h3>5. 社交支持</h3><p>寻求朋友和家人的理解与支持。</p>',
-        '', '情绪调节,心理技巧,自我管理', 1, 23, 1, '2025-09-02 14:30:00', '2025-09-02 14:30:00',
+        '', '情绪调节,心理技巧,自我管理', 1, 23, 0, 0, 0, 1, '2025-09-02 14:30:00', '2025-09-02 14:30:00',
         '2025-09-02 14:30:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440003', 3, '职场压力管理指南',
         '在快节奏的工作环境中，学会有效管理压力是职业成功的关键。',
         '<p>职场压力是现代工作生活中不可避免的挑战。本指南将帮助您建立有效的压力管理体系。</p><h3>识别压力源</h3><ul><li>工作量过大</li><li>人际关系紧张</li><li>职业发展焦虑</li><li>工作与生活平衡困难</li></ul><h3>压力管理策略</h3><ol><li>时间管理技巧</li><li>设定合理目标</li><li>建立支持网络</li><li>培养兴趣爱好</li><li>定期休息和放松</li></ol><h3>长期压力预防</h3><p>建立健康的工作习惯和生活方式，预防压力累积。</p>',
-        '', '职场压力,时间管理,工作生活平衡', 1, 31, 1, '2025-09-03 09:15:00', '2025-09-03 09:15:00',
+        '', '职场压力,时间管理,工作生活平衡', 1, 31, 0, 0, 0, 1, '2025-09-03 09:15:00', '2025-09-03 09:15:00',
         '2025-09-03 09:15:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440004', 4, '建立健康的人际关系', '良好的人际关系是心理健康和生活幸福的基石。',
         '<p>人际关系质量直接影响我们的心理健康和生活满意度。本文将探讨如何建立和维护健康的人际关系。</p><h3>健康关系的特征</h3><ul><li>相互尊重和信任</li><li>有效沟通</li><li>情感支持</li><li>个人边界清晰</li></ul><h3>沟通技巧</h3><ol><li>积极倾听</li><li>表达真实感受</li><li>非暴力沟通</li><li>冲突解决</li></ol><h3>维护关系的方法</h3><p>定期联系、表达感激、共同成长、处理分歧。</p>',
-        '', '人际关系,沟通技巧,社交能力', 1, 18, 1, '2025-09-04 16:20:00', '2025-09-04 16:20:00',
+        '', '人际关系,沟通技巧,社交能力', 1, 18, 0, 0, 0, 1, '2025-09-04 16:20:00', '2025-09-04 16:20:00',
         '2025-09-04 16:20:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440005', 1, '睡眠质量与心理健康', '优质睡眠是维护心理健康的重要基础。',
         '<p>睡眠质量与心理健康密切相关。充足的睡眠不仅能恢复身体机能，还对情绪调节和认知功能有重要影响。</p><h3>睡眠对心理健康的影响</h3><ul><li>情绪稳定性</li><li>压力应对能力</li><li>记忆和学习能力</li><li>注意力集中</li></ul><h3>改善睡眠质量的方法</h3><ol><li>建立规律作息</li><li>创造良好睡眠环境</li><li>睡前放松活动</li><li>避免刺激性物质</li><li>适度运动</li></ol>',
-        '', '睡眠健康,心理健康,生活习惯', 1, 27, 1, '2025-09-05 11:45:00', '2025-09-05 11:45:00',
+        '', '睡眠健康,心理健康,生活习惯', 1, 27, 0, 0, 0, 1, '2025-09-05 11:45:00', '2025-09-05 11:45:00',
         '2025-09-05 11:45:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440006', 2, '正念练习入门指南',
         '正念练习是现代心理学推荐的有效减压和情绪调节方法。',
         '<p>正念是一种专注于当下体验的练习方法，能够帮助我们更好地管理情绪和压力。</p><h3>什么是正念</h3><p>正念是有意识地、不带评判地关注当下时刻的能力。</p><h3>正念的益处</h3><ul><li>减少焦虑和抑郁</li><li>提高专注力</li><li>改善情绪调节</li><li>增强自我觉察</li></ul><h3>基础正念练习</h3><ol><li>呼吸观察</li><li>身体扫描</li><li>行走冥想</li><li>日常正念</li></ol><h3>练习建议</h3><p>从每天5-10分钟开始，逐渐增加练习时间。</p>',
-        '', '正念,冥想,减压,专注力', 1, 42, 1, '2025-09-06 13:10:00', '2025-09-06 13:10:00', '2025-09-06 13:10:00');
+        '', '正念,冥想,减压,专注力', 1, 42, 0, 0, 0, 1, '2025-09-06 13:10:00', '2025-09-06 13:10:00', '2025-09-06 13:10:00');
 INSERT INTO `knowledge_article`
 VALUES ('550e8400-e29b-41d4-a716-446655440007', 3, '学生心理压力应对策略',
         '帮助学生识别和应对学习生活中的各种心理压力。',
         '<p>学生时期面临着学业、人际、未来规划等多重压力。掌握有效的应对策略对学生心理健康至关重要。</p><h3>常见压力源</h3><ul><li>学业成绩压力</li><li>同伴关系</li><li>家庭期望</li><li>未来规划焦虑</li></ul><h3>应对策略</h3><ol><li>合理规划学习时间</li><li>培养兴趣爱好</li><li>建立支持网络</li><li>学会放松技巧</li><li>寻求专业帮助</li></ol><h3>预防措施</h3><p>建立健康的学习习惯和生活方式。</p>',
-        '', '学生心理,学业压力,青少年心理', 1, 35, 1, '2025-09-07 08:30:00', '2025-09-07 08:30:00',
+        '', '学生心理,学业压力,青少年心理', 1, 35, 0, 0, 0, 1, '2025-09-07 08:30:00', '2025-09-07 08:30:00',
         '2025-11-10 19:07:53');
 
 -- ----------------------------
@@ -465,6 +471,7 @@ CREATE TABLE `knowledge_category`
     `category_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '分类名称',
     `category_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '分类代码',
     `description`   text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '分类描述',
+    `icon`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '分类图标(emoji或图片URL)',
     `sort_order`    int                                                           NULL DEFAULT 0 COMMENT '排序',
     `status`        tinyint                                                       NULL DEFAULT 1 COMMENT '状态 0:禁用 1:启用',
     `created_at`    datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
@@ -574,7 +581,7 @@ CREATE TABLE `user`
     `avatar`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '头像URL',
     `gender`     tinyint                                                       NULL DEFAULT NULL COMMENT '性别 0:未知 1:男 2:女',
     `birthday`   date                                                          NULL DEFAULT NULL COMMENT '生日',
-    `user_type`  tinyint                                                       NULL DEFAULT 1 COMMENT '用户类型 1:普通用户 2:管理员',
+    `user_type`  tinyint                                                       NULL DEFAULT 1 COMMENT '用户类型 1:普通用户 2:管理员 3:咨询师',
     `status`     tinyint                                                       NULL DEFAULT 1 COMMENT '状态 0:禁用 1:正常',
     `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -646,19 +653,62 @@ ALTER TABLE `user`
 DROP TABLE IF EXISTS `user_browse_history`;
 CREATE TABLE `user_browse_history`
 (
-    `id`         bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '历史记录ID',
-    `user_id`    bigint                                                       NOT NULL COMMENT '用户ID',
-    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
-    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近浏览时间',
+    `id`               bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '历史记录ID',
+    `user_id`          bigint                                                       NOT NULL COMMENT '用户ID',
+    `article_id`      varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
+    `duration_seconds` int                                                          NOT NULL DEFAULT 0 COMMENT '累计阅读时长(秒)',
+    `created_at`       datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近浏览时间',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `user_article_history_unique` (`user_id` ASC, `article_id` ASC) USING BTREE,
     INDEX `idx_user_id` (`user_id` ASC) USING BTREE,
+    INDEX `idx_article_created` (`article_id` ASC, `created_at` ASC) USING BTREE,
     CONSTRAINT `user_browse_history_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT `user_browse_history_ibfk_2` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 1
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT = '用户文章浏览历史表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for article_like 文章点赞表
+-- ----------------------------
+DROP TABLE IF EXISTS `article_like`;
+CREATE TABLE `article_like`
+(
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '点赞ID',
+    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
+    `user_id`    bigint                                                       NOT NULL COMMENT '用户ID',
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_article` (`user_id` ASC, `article_id` ASC) USING BTREE,
+    INDEX `idx_article` (`article_id` ASC) USING BTREE,
+    CONSTRAINT `fk_al_article` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_al_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '文章点赞表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for article_comment 文章评论表
+-- ----------------------------
+DROP TABLE IF EXISTS `article_comment`;
+CREATE TABLE `article_comment`
+(
+    `id`         bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID',
+    `user_id`    bigint                                                        NOT NULL COMMENT '用户ID',
+    `content`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+    `status`     tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0:待审核 1:已通过 2:已拒绝',
+    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_article_status` (`article_id` ASC, `status` ASC, `created_at` ASC) USING BTREE,
+    CONSTRAINT `fk_ac_article` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_ac_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '文章评论表'
   ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -896,7 +946,10 @@ CREATE TABLE `community_post`
     `images`       json                                                          NULL COMMENT '图片URL数组',
     `author_id`    bigint                                                        NOT NULL COMMENT '作者ID',
     `is_anonymous` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
-    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:举报待审 3:已下架',
+    `is_top`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-置顶（置顶不设时长，如需到期自动取消可加 top_expire_at + 定时任务）',
+    `is_featured`  tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-加精',
+    `reject_reason` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '审核驳回原因（仅 REJECTED 状态有值）',
+    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:举报待审 3:已下架 4:待审核 5:已驳回',
     `like_count`    int                                                          NOT NULL DEFAULT 0 COMMENT '点赞数',
     `comment_count` int                                                          NOT NULL DEFAULT 0 COMMENT '评论数',
     `favorite_count` int                                                         NOT NULL DEFAULT 0 COMMENT '收藏数',
@@ -927,7 +980,7 @@ CREATE TABLE `community_comment`
     `author_id`    bigint                                                        NOT NULL COMMENT '评论人ID',
     `content`      varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
     `is_anonymous` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
-    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除',
+    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:待审核(先审后发)',
     `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_post_created` (`post_id` ASC, `created_at` ASC) USING BTREE,
@@ -993,7 +1046,7 @@ CREATE TABLE `community_report`
     `target_id`   bigint                                                         NOT NULL COMMENT '举报对象ID',
     `reporter_id` bigint                                                         NOT NULL COMMENT '举报人ID',
     `reason`      varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '举报原因',
-    `status`      tinyint                                                        NOT NULL DEFAULT 0 COMMENT '处理状态 0:待处理 1:已下架 2:已忽略',
+    `status`      tinyint                                                        NOT NULL DEFAULT 0 COMMENT '处理状态 0:待处理 1:已下架 2:已忽略 3:已警告',
     `created_at`  datetime                                                       NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `handled_at`  datetime                                                       NULL DEFAULT NULL COMMENT '处理时间',
     PRIMARY KEY (`id`) USING BTREE,
@@ -1004,6 +1057,71 @@ CREATE TABLE `community_report`
   AUTO_INCREMENT = 1
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT = '社区举报表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for community_board 社区板块表
+-- ----------------------------
+CREATE TABLE `community_board`
+(
+    `id`           bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '板块ID',
+    `code`         varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '板块编码(对应 post.board)',
+    `name`         varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '板块名称',
+    `icon`         varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '板块图标',
+    `description`  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '板块描述',
+    `sort_order`   int                                                          NOT NULL DEFAULT 0 COMMENT '排序(越小越靠前)',
+    `moderator_id` bigint                                                       NULL DEFAULT NULL COMMENT '版主用户ID(可选)',
+    `status`       tinyint                                                      NOT NULL DEFAULT 1 COMMENT '0-停用 1-启用',
+    `created_at`   datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_code` (`code`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '社区板块表'
+  ROW_FORMAT = DYNAMIC;
+
+INSERT INTO `community_board` (`code`, `name`, `sort_order`, `status`) VALUES
+    ('TREES',        '情绪树洞', 1, 1),
+    ('ACADEMIC',     '学业压力', 2, 1),
+    ('RELATIONSHIP', '人际关系', 3, 1),
+    ('SLEEP',        '睡眠困扰', 4, 1),
+    ('RECOVERY',     '康复分享', 5, 1),
+    ('HELP',         '互助问答', 6, 1);
+
+-- ----------------------------
+-- Table structure for community_blacklist 社区黑名单表(屏蔽发帖评论)
+-- ----------------------------
+CREATE TABLE `community_blacklist`
+(
+    `id`         bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id`    bigint       NOT NULL COMMENT '被屏蔽用户ID',
+    `reason`     varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '屏蔽原因',
+    `created_at` datetime     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_user` (`user_id`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '社区黑名单(屏蔽发帖评论)'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for sensitive_word 敏感词库表(违规词)
+-- ----------------------------
+CREATE TABLE `sensitive_word`
+(
+    `id`         bigint                                                      NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `word`       varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '敏感词',
+    `category`   varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OTHER' COMMENT '分类:POLITICAL/VIOLENT/VULGAR/AD/OTHER',
+    `status`     tinyint                                                     NOT NULL DEFAULT 1 COMMENT '0-停用 1-启用',
+    `created_at` datetime                                                    NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_word` (`word`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '敏感词库(违规词)'
   ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -1047,3 +1165,370 @@ CREATE TABLE `practice_checkin`
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT = '每日练习打卡表'
   ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for notification 消息通知表
+-- ----------------------------
+DROP TABLE IF EXISTS `notification`;
+CREATE TABLE `notification`
+(
+    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '通知ID',
+    `user_id`      bigint                                                        NOT NULL COMMENT '接收者用户ID',
+    `type`         varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '类型：ANNOUNCEMENT公告/APPOINTMENT预约/INTERACTION互动/ASSESSMENT测评',
+    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '通知标题',
+    `content`      varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '通知内容',
+    `related_type` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '关联类型：POST/APPOINTMENT/ASSESSMENT',
+    `related_id`   bigint                                                        NULL DEFAULT NULL COMMENT '关联业务ID',
+    `is_read`      tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否已读 0:未读 1:已读',
+    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_user_read_created` (`user_id` ASC, `is_read` ASC, `created_at` DESC) USING BTREE,
+    CONSTRAINT `fk_notify_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '消息通知表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for announcement 系统公告表
+-- ----------------------------
+DROP TABLE IF EXISTS `announcement`;
+CREATE TABLE `announcement`
+(
+    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '公告ID',
+    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标题',
+    `content`      longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '公告内容(富文本HTML，已白名单清洗)',
+    `status`       tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:发布中 0:已下架',
+    `published_at` datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
+    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_status_published` (`status` ASC, `published_at` DESC) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '系统公告表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for announcement_read 公告已读表
+-- ----------------------------
+DROP TABLE IF EXISTS `announcement_read`;
+CREATE TABLE `announcement_read`
+(
+    `id`              bigint   NOT NULL AUTO_INCREMENT COMMENT '已读记录ID',
+    `announcement_id` bigint   NOT NULL COMMENT '公告ID',
+    `user_id`         bigint   NOT NULL COMMENT '用户ID',
+    `read_at`         datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '阅读时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_announcement_user` (`announcement_id` ASC, `user_id` ASC) USING BTREE,
+    CONSTRAINT `fk_anread_announcement` FOREIGN KEY (`announcement_id`) REFERENCES `announcement` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_anread_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '公告已读表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for user_notify_setting 消息设置表
+-- ----------------------------
+DROP TABLE IF EXISTS `user_notify_setting`;
+CREATE TABLE `user_notify_setting`
+(
+    `id`                        bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '设置ID',
+    `user_id`                   bigint                                                       NOT NULL COMMENT '用户ID',
+    `announcement_on`           tinyint                                                      NOT NULL DEFAULT 1 COMMENT '公告通知开关 0:关 1:开',
+    `appointment_on`            tinyint                                                      NOT NULL DEFAULT 1 COMMENT '预约通知开关 0:关 1:开',
+    `interaction_on`            tinyint                                                      NOT NULL DEFAULT 1 COMMENT '互动通知开关 0:关 1:开',
+    `assessment_on`             tinyint                                                      NOT NULL DEFAULT 1 COMMENT '测评提醒开关 0:关 1:开',
+    `assessment_frequency`      varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'WEEKLY' COMMENT '测评提醒频率：NONE关闭/WEEKLY每周/DAILY每天',
+    `last_assessment_remind_at` datetime                                                     NULL DEFAULT NULL COMMENT '上次测评提醒时间(防重复)',
+    `created_at`                datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`                datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user` (`user_id` ASC) USING BTREE,
+    CONSTRAINT `fk_uns_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '消息设置表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- 预约咨询模块 5 张表（正式表，替换原 appointment 演示数据源）
+-- 删除顺序：先子后父，避免外键约束阻止 DROP
+-- ----------------------------
+DROP TABLE IF EXISTS `appointment_message`;
+DROP TABLE IF EXISTS `consultant_review`;
+DROP TABLE IF EXISTS `appointment`;
+DROP TABLE IF EXISTS `appointment_slot`;
+DROP TABLE IF EXISTS `consultant`;
+
+-- ----------------------------
+-- Table structure for consultant 咨询师表
+-- ----------------------------
+CREATE TABLE `consultant`
+(
+    `id`                bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '咨询师ID',
+    `user_id`           bigint                                                        NULL COMMENT '关联登录账号(user_type=3)',
+    `name`              varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '姓名',
+    `avatar`            varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '头像',
+    `title`             varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '职称：心理咨询师/心理治疗师/专家',
+    `specialties`       varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '擅长领域，逗号分隔：情绪管理,人际关系,学业压力,睡眠问题',
+    `years_of_practice` int                                                           NOT NULL DEFAULT 0 COMMENT '从业年限',
+    `intro`             text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci        NULL COMMENT '个人简介',
+    `rating`            decimal(3, 1)                                                 NOT NULL DEFAULT 0.0 COMMENT '平均评分(冗余)',
+    `review_count`      int                                                           NOT NULL DEFAULT 0 COMMENT '评价次数(冗余)',
+    `consult_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '咨询次数(冗余)',
+    `status`            tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-待审核 1-正常 2-禁用',
+    `qualification_images` json                                                      NULL COMMENT '资质证明图片URL数组(JSON)',
+    `reject_reason`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '驳回原因(非空=已驳回待修改)',
+    `reviewed_at`       datetime                                                      NULL DEFAULT NULL COMMENT '最近审核时间',
+    `joined_at`         datetime                                                      NULL DEFAULT NULL COMMENT '入驻时间(审核通过时间)',
+    `sort_weight`       int                                                           NOT NULL DEFAULT 0 COMMENT '排序权重(越大越靠前)',
+    `price`             decimal(10, 2)                                                NULL DEFAULT NULL COMMENT '咨询价格(元/小时，付费预留)',
+    `booking_window_days` int                                                          NOT NULL DEFAULT 14 COMMENT '可预约天数(用户端可约未来N天)',
+    `cancel_hours_before` int                                                          NOT NULL DEFAULT 2 COMMENT '用户取消时限(开始前N小时,0=不限)',
+    `created_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user_id` (`user_id` ASC) USING BTREE,
+    INDEX `idx_status_created` (`status` ASC, `created_at` ASC) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '咨询师表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for appointment_slot 可预约时段表
+-- ----------------------------
+CREATE TABLE `appointment_slot`
+(
+    `id`            bigint    NOT NULL AUTO_INCREMENT COMMENT '时段ID',
+    `consultant_id` bigint    NOT NULL COMMENT '咨询师ID',
+    `slot_date`     date      NOT NULL COMMENT '日期',
+    `start_time`    time      NOT NULL COMMENT '开始时间',
+    `end_time`      time      NOT NULL COMMENT '结束时间',
+    `status`        tinyint   NOT NULL DEFAULT 0 COMMENT '0-可约 1-已约 2-停用',
+    `created_at`    datetime  NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_consultant_slot` (`consultant_id` ASC, `slot_date` ASC, `start_time` ASC) USING BTREE,
+    INDEX `idx_date_status` (`slot_date` ASC, `status` ASC) USING BTREE,
+    CONSTRAINT `fk_slot_consultant` FOREIGN KEY (`consultant_id`) REFERENCES `consultant` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '可预约时段表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for appointment 咨询预约表
+-- reminded_at 供消息通知模块「提前1小时提醒」任务复用
+-- ----------------------------
+CREATE TABLE `appointment`
+(
+    `id`               bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '预约ID',
+    `user_id`          bigint                                                        NOT NULL COMMENT '预约用户ID',
+    `consultant_id`    bigint                                                        NOT NULL COMMENT '咨询师ID',
+    `slot_id`          bigint                                                        NOT NULL COMMENT '时段ID',
+    `appointment_date` date                                                          NOT NULL COMMENT '预约日期',
+    `start_time`       time                                                          NOT NULL COMMENT '开始时间',
+    `end_time`         time                                                          NOT NULL COMMENT '结束时间',
+    `problem_desc`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '咨询问题描述',
+    `cancel_reason`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '取消原因',
+    `canceled_at`      datetime                                                      NULL DEFAULT NULL COMMENT '取消时间',
+    `status`           varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING待确认/CONFIRMED已确认/COMPLETED已完成/CANCELED已取消',
+    `reminded_at`      datetime                                                      NULL DEFAULT NULL COMMENT '已发提前1小时提醒时间(防重复)',
+    `evaluated`        tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否已评价 0-否 1-是',
+    `created_at`       datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`       datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_user_status` (`user_id` ASC, `status` ASC) USING BTREE,
+    INDEX `idx_consultant` (`consultant_id` ASC) USING BTREE,
+    INDEX `idx_status_date` (`status` ASC, `appointment_date` ASC) USING BTREE,
+    CONSTRAINT `fk_appt_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_appt_consultant` FOREIGN KEY (`consultant_id`) REFERENCES `consultant` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_appt_slot` FOREIGN KEY (`slot_id`) REFERENCES `appointment_slot` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '咨询预约表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for appointment_message 预约留言表(WebSocket+HTTP)
+-- ----------------------------
+CREATE TABLE `appointment_message`
+(
+    `id`             bigint                                                         NOT NULL AUTO_INCREMENT COMMENT '留言ID',
+    `appointment_id` bigint                                                         NOT NULL COMMENT '预约ID',
+    `sender_id`      bigint                                                         NOT NULL COMMENT '发送者ID',
+    `sender_type`    tinyint                                                        NOT NULL COMMENT '1-用户 2-咨询师/管理员',
+    `content`        varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '留言内容',
+    `created_at`     datetime                                                       NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_appointment_created` (`appointment_id` ASC, `created_at` ASC) USING BTREE,
+    CONSTRAINT `fk_msg_appt` FOREIGN KEY (`appointment_id`) REFERENCES `appointment` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '预约留言表(WebSocket+HTTP)'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for consultant_review 咨询评价表
+-- uk_appointment 保证一单一评
+-- ----------------------------
+CREATE TABLE `consultant_review`
+(
+    `id`             bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评价ID',
+    `appointment_id` bigint                                                        NOT NULL COMMENT '预约ID',
+    `consultant_id`  bigint                                                        NOT NULL COMMENT '咨询师ID',
+    `user_id`        bigint                                                        NOT NULL COMMENT '评价用户ID',
+    `rating`         tinyint                                                       NOT NULL COMMENT '评分1-5',
+    `content`        varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '评价内容',
+    `reply_content`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '管理员/咨询师回复',
+    `reply_at`       datetime                                                      NULL DEFAULT NULL COMMENT '回复时间',
+    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_appointment` (`appointment_id` ASC) USING BTREE,
+    INDEX `idx_consultant_created` (`consultant_id` ASC, `created_at` ASC) USING BTREE,
+    CONSTRAINT `fk_rev_appt` FOREIGN KEY (`appointment_id`) REFERENCES `appointment` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_rev_consultant` FOREIGN KEY (`consultant_id`) REFERENCES `consultant` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_rev_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '咨询评价表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- 演示数据：3 名咨询师
+-- ----------------------------
+INSERT INTO `consultant` (`id`, `name`, `title`, `specialties`, `years_of_practice`, `intro`, `rating`, `review_count`, `consult_count`, `status`, `reviewed_at`, `joined_at`)
+VALUES (1, '林知秋', '心理咨询师', '情绪管理,人际关系,学业压力', 8,
+        '国家二级心理咨询师，擅长认知行为疗法（CBT）与正念减压。温和倾听，陪你梳理情绪与压力，找回内在的安定感。',
+        4.9, 0, 0, 1, NOW(), NOW()),
+       (2, '苏晚', '心理治疗师', '睡眠问题,情绪管理,学业压力', 12,
+        '临床心理工作经验丰富，专注睡眠困扰与焦虑情绪干预。相信每一个失眠的夜晚，都值得被认真对待。',
+        4.8, 0, 0, 1, NOW(), NOW()),
+       (3, '陈默', '资深心理咨询专家', '人际关系,情绪管理', 15,
+        '注册心理师，长期从事人际关系与自我成长方向咨询。风格沉稳专业，已陪伴上千位来访者走过低谷。',
+        5.0, 0, 0, 1, NOW(), NOW());
+
+-- ----------------------------
+-- 演示数据：未来 7 天排班（CTE 生成，日期随执行日滚动），每天 9-12 点、14-17 点整点时段
+-- ----------------------------
+INSERT INTO `appointment_slot` (`consultant_id`, `slot_date`, `start_time`, `end_time`, `status`)
+WITH RECURSIVE days(d) AS (SELECT 0
+                           UNION ALL
+                           SELECT d + 1 FROM days WHERE d < 6),
+               hours(h) AS (SELECT 9
+                            UNION ALL SELECT 10
+                            UNION ALL SELECT 11
+                            UNION ALL SELECT 14
+                            UNION ALL SELECT 15
+                            UNION ALL SELECT 16)
+SELECT c.id,
+       DATE_ADD(CURDATE(), INTERVAL days.d DAY),
+       SEC_TO_TIME(hours.h * 3600),
+       SEC_TO_TIME((hours.h + 1) * 3600),
+       0
+FROM days CROSS JOIN hours CROSS JOIN (SELECT 1 AS id UNION ALL SELECT 2 UNION ALL SELECT 3) c;
+
+-- ----------------------------
+-- Table structure for crisis_safety_plan 个人安全计划表
+-- 每用户一行（uk_user 唯一键），仅本人可读写；json 列存结构化数组，不缓存
+-- ----------------------------
+DROP TABLE IF EXISTS `crisis_safety_plan`;
+CREATE TABLE `crisis_safety_plan`
+(
+    `id`                bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '计划ID',
+    `user_id`           bigint                                                       NOT NULL COMMENT '用户ID',
+    `loved_ones`        json                                                         NULL COMMENT '可信赖的人：[{name,relation,phone}]',
+    `coping_strategies` json                                                        NULL COMMENT '应对策略：字符串数组',
+    `emergency_contact` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '紧急联系方式',
+    `created_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_user` (`user_id` ASC) USING BTREE,
+    CONSTRAINT `fk_csp_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '个人安全计划表'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for crisis_event 危机事件记录表
+-- 仅记录元数据（user_id/来源/命中词/时间），禁止存储对话内容，保护隐私
+-- ----------------------------
+DROP TABLE IF EXISTS `crisis_event`;
+CREATE TABLE `crisis_event`
+(
+    `id`               bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '事件ID',
+    `user_id`          bigint                                                       NOT NULL COMMENT '用户ID',
+    `source`           varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '触发来源：CHAT对话/COMMUNITY社区/ASSESSMENT测评',
+    `matched_keyword`  varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '命中的危机词(仅记录词本身，不含上下文)',
+    `created_at`       datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '触发时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    INDEX `idx_user_created` (`user_id` ASC, `created_at` ASC) USING BTREE,
+    CONSTRAINT `fk_ce_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '危机事件记录表(仅元数据，不含对话内容)'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Table structure for consultation_record 咨询记录表(一单一记录，咨询师本人读写/管理员只读)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `consultation_record`
+(
+    `id`                 bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '记录ID',
+    `appointment_id`     bigint                                                        NOT NULL COMMENT '预约ID(一单一记录)',
+    `user_id`            bigint                                                        NOT NULL COMMENT '来访者ID',
+    `consultant_id`      bigint                                                        NOT NULL COMMENT '咨询师ID',
+    `chief_complaint`    varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '主诉',
+    `analysis`           varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '分析',
+    `intervention_plan`  varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '干预方案',
+    `next_suggestion`    varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '下次建议',
+    `created_at`         datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`         datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE INDEX `uk_appointment` (`appointment_id` ASC) USING BTREE,
+    INDEX `idx_user` (`user_id` ASC) USING BTREE,
+    INDEX `idx_consultant` (`consultant_id` ASC) USING BTREE,
+    CONSTRAINT `fk_cr_appointment` FOREIGN KEY (`appointment_id`) REFERENCES `appointment` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_cr_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+    CONSTRAINT `fk_cr_consultant` FOREIGN KEY (`consultant_id`) REFERENCES `consultant` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '咨询记录(仅咨询师本人与管理员可见)'
+  ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- 用户管理模块增量字段：最后登录时间 + 列表检索复合索引
+-- 幂等迁移：通过 information_schema 判断列/索引是否存在，不存在才执行 DDL；
+-- 全量重建与存量库重复执行本脚本均不会报 Duplicate column（MySQL 5.7/8.0 通用）
+-- ----------------------------
+
+-- user.last_login_at 最后登录时间
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'last_login_at') = 0,
+    'ALTER TABLE `user` ADD COLUMN `last_login_at` datetime NULL COMMENT ''最后登录时间'' AFTER `updated_at`',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- idx_status_created 列表检索复合索引（status + created_at）
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND INDEX_NAME = 'idx_status_created') = 0,
+    'ALTER TABLE `user` ADD INDEX `idx_status_created` (`status` ASC, `created_at` ASC) USING BTREE',
+    'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;

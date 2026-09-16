@@ -33,6 +33,10 @@ public class UserBrowseHistory {
     @TableField("article_id")
     private String articleId;
 
+    // 累计阅读时长（秒）
+    @TableField("duration_seconds")
+    private Integer durationSeconds;
+
     // 最近浏览时间
     @TableField("created_at")
     private LocalDateTime createdAt;

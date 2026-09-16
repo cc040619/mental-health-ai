@@ -39,7 +39,7 @@ public class CommunityReport {
 
     private String reason;
 
-    // 0-待处理 1-已下架 2-已忽略
+    // 0-待处理 1-已下架 2-已忽略 3-已警告
     private Integer status;
 
     @TableField("created_at")
