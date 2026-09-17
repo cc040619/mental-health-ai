@@ -148,6 +148,7 @@ public class ConsultantSessionService {
         dto.setStatus(appointment.getStatus());
         dto.setStatusLabel(AppointmentStatus.fromCode(appointment.getStatus()).getLabel());
         dto.setProblemDesc(appointment.getProblemDesc());
+        dto.setCancelReason(appointment.getCancelReason());
         dto.setRecord(appointmentConvert.toRecordDTO(record));
         return dto;
     }
@@ -225,6 +226,7 @@ public class ConsultantSessionService {
     /**
      * 发送留言（复用 AppointmentMessageService.save，senderType=2 咨询师）。
      * 调用前归属校验防越权；日志只记 appointmentId+动作，不含留言内容。
+     * 咨询师留言后给来访者推送通知的逻辑已下沉到 AppointmentMessageService.save（覆盖 HTTP+WS）。
      */
     public AppointmentMessageResponseDTO sendMessage(Long appointmentId, String content) {
         if (content == null || content.isBlank()) {

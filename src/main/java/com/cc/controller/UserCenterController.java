@@ -8,12 +8,14 @@ import com.cc.dto.request.PasswordResetDTO;
 import com.cc.dto.request.PasswordUpdateDTO;
 import com.cc.dto.request.PhoneBindDTO;
 import com.cc.dto.request.ProfileUpdateDTO;
+import com.cc.dto.request.SetPasswordDTO;
 import com.cc.dto.response.BrowseHistoryResponseDTO;
 import com.cc.dto.response.FavoriteResponseDTO;
 import com.cc.dto.response.ProfileResponseDTO;
 import com.cc.service.BrowseHistoryService;
 import com.cc.service.FavoriteService;
 import com.cc.service.ProfileService;
+import com.cc.service.UserService;
 import com.cc.util.CurrentUserUtils;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
@@ -50,6 +52,9 @@ public class UserCenterController {
     @Resource
     private BrowseHistoryService browseHistoryService;
 
+    @Resource
+    private UserService userService;
+
     // ==================== 个人资料 ====================
 
     // 获取当前用户资料（含个人简介）
@@ -73,6 +78,14 @@ public class UserCenterController {
     public Result<Void> changePassword(@Valid @RequestBody PasswordUpdateDTO passwordDTO) {
         Long userId = CurrentUserUtils.getCurrentUserId();
         profileService.changePassword(userId, passwordDTO);
+        return Result.ok();
+    }
+
+    // 首次设置密码（仅无密码用户可用，已有密码则拒绝）
+    @PutMapping("/password/set")
+    public Result<Void> setPassword(@Valid @RequestBody SetPasswordDTO setPasswordDTO) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        userService.setPassword(userId, setPasswordDTO);
         return Result.ok();
     }
 

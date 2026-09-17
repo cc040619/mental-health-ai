@@ -19,6 +19,8 @@ public class NotifySettingResponseDTO {
 
     private Integer assessmentOn;
 
+    private Integer consultantOn;
+
     // NONE/WEEKLY/DAILY
     private String assessmentFrequency;
 }

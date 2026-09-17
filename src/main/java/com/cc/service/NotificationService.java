@@ -392,6 +392,7 @@ public class NotificationService {
             case APPOINTMENT -> Integer.valueOf(1).equals(setting.getAppointmentOn());
             case INTERACTION -> Integer.valueOf(1).equals(setting.getInteractionOn());
             case ASSESSMENT -> Integer.valueOf(1).equals(setting.getAssessmentOn());
+            case CONSULTANT -> Integer.valueOf(1).equals(setting.getConsultantOn());
         };
     }
 

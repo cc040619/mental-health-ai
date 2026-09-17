@@ -1,12 +1,23 @@
 <template>
     <div class="profile-security">
-        <!-- ===== 手账风：修改密码 ===== -->
+        <!-- ===== 手账风：设置密码 / 修改密码（根据 hasPassword 切换） ===== -->
         <div class="diary-card">
             <div class="tape tape-orange"></div>
-            <p class="card-title">🔒 修改密码</p>
-            <p class="card-subtitle">定期更换密码，守护你的小手账 🛡️</p>
+            <p class="card-title">{{ hasPassword ? '🔒 修改密码' : '🔒 设置密码' }}</p>
+            <p class="card-subtitle">{{ hasPassword ? '定期更换密码，守护你的小手账 🛡️' : '设置密码后可使用账号密码登录 🛡️' }}</p>
 
-            <el-form :model="pwdForm" :rules="pwdRules" ref="pwdFormRef" label-position="top" class="security-form">
+            <!-- 设置密码（无密码用户） -->
+            <el-form v-if="!hasPassword" :model="setPwdForm" :rules="setPwdRules" ref="setPwdFormRef" label-position="top" class="security-form">
+                <el-form-item label="新密码" prop="password">
+                    <el-input v-model="setPwdForm.password" type="password" show-password placeholder="请输入新密码" />
+                </el-form-item>
+                <el-form-item label="确认新密码" prop="confirmPassword">
+                    <el-input v-model="setPwdForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" />
+                </el-form-item>
+            </el-form>
+
+            <!-- 修改密码（有密码用户） -->
+            <el-form v-else :model="pwdForm" :rules="pwdRules" ref="pwdFormRef" label-position="top" class="security-form">
                 <el-form-item label="原密码" prop="oldPassword">
                     <el-input v-model="pwdForm.oldPassword" type="password" show-password placeholder="请输入原密码" />
                 </el-form-item>
@@ -17,8 +28,10 @@
                     <el-input v-model="pwdForm.confirmPassword" type="password" show-password placeholder="再次输入新密码" />
                 </el-form-item>
             </el-form>
-            <el-button type="primary" :loading="pwdLoading" @click="handleChangePassword">🔐 确认修改</el-button>
-            <p class="form-tip">修改成功后需要重新登录</p>
+
+            <el-button v-if="!hasPassword" type="primary" :loading="setPwdLoading" @click="handleSetPassword">🔐 确认设置</el-button>
+            <el-button v-else type="primary" :loading="pwdLoading" @click="handleChangePassword">🔐 确认修改</el-button>
+            <p class="form-tip">{{ hasPassword ? '修改成功后需要重新登录' : '密码需大于8位，且包含字母、数字和特殊符号' }}</p>
         </div>
 
         <!-- ===== 手账风：绑定/换绑手机号 ===== -->
@@ -72,11 +85,79 @@
 </template>
 
 <script setup>
-import { ref, reactive, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { changePassword, bindPhone, sendPhoneBindCode, resetPassword, sendEmailCode } from '@/api/user'
+import { changePassword, bindPhone, sendPhoneBindCode, resetPassword, sendEmailCode, setPassword, getProfile } from '@/api/user'
 
 const emit = defineEmits(['passwordChanged', 'phoneBound'])
+
+// 密码规则：大于8位（至少9位），含字母、数字、特殊符号
+const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d]).{9,}$/
+
+// 是否已设置密码（从 getProfile 接口读取，进入页面时刷新）
+const hasPassword = ref(true)
+
+const loadHasPassword = async () => {
+    try {
+        const profile = await getProfile()
+        hasPassword.value = profile?.hasPassword !== false
+    } catch (e) {
+        // 接口失败时保持默认 true（按有密码处理，走修改密码流程）
+        hasPassword.value = true
+    }
+}
+
+onMounted(() => {
+    loadHasPassword()
+})
+
+// ==================== 设置密码（无密码用户） ====================
+const setPwdFormRef = ref()
+const setPwdForm = reactive({
+    password: '',
+    confirmPassword: ''
+})
+const setPwdRules = {
+    password: [
+        { required: true, message: '请输入新密码', trigger: 'blur' },
+        { pattern: PASSWORD_REGEX, message: '密码需大于8位，且包含字母、数字和特殊符号', trigger: 'blur' }
+    ],
+    confirmPassword: [
+        { required: true, message: '请再次输入新密码', trigger: 'blur' },
+        { validator: (rule, value, callback) => value !== setPwdForm.password ? callback(new Error('两次输入的密码不一致')) : callback(), trigger: 'blur' }
+    ]
+}
+const setPwdLoading = ref(false)
+
+const handleSetPassword = async () => {
+    if (!setPwdFormRef.value) return
+    await setPwdFormRef.value.validate(async (valid) => {
+        if (!valid) return
+        setPwdLoading.value = true
+        try {
+            await setPassword({
+                password: setPwdForm.password,
+                confirmPassword: setPwdForm.confirmPassword
+            })
+            ElMessage.success('密码设置成功 🌷')
+            // 设置成功后刷新 hasPassword，切换为修改密码视图（保持登录态，不跳转）
+            hasPassword.value = true
+            // 同步更新 localStorage 中的 hasPassword 标记
+            try {
+                const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+                userInfo.hasPassword = true
+                localStorage.setItem('userInfo', JSON.stringify(userInfo))
+            } catch (e) {}
+            // 清空表单
+            setPwdForm.password = ''
+            setPwdForm.confirmPassword = ''
+        } catch (e) {
+            // 错误已由拦截器统一提示
+        } finally {
+            setPwdLoading.value = false
+        }
+    })
+}
 
 // ==================== 修改密码 ====================
 const pwdFormRef = ref()

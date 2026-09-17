@@ -54,4 +54,7 @@ public class ProfileResponseDTO {
 
     // 更新时间
     private LocalDateTime updatedAt;
+
+    /** 是否已设置密码（password 非空）；新注册邮箱用户为 false，需引导设置密码 */
+    private Boolean hasPassword;
 }

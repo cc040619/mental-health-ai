@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cc.dto.response.AppointmentMessageResponseDTO;
 import com.cc.entity.Appointment;
 import com.cc.entity.AppointmentMessage;
+import com.cc.enums.NotificationType;
 import com.cc.mapper.AppointmentMessageMapper;
 import com.cc.service.convert.AppointmentConvert;
 import jakarta.annotation.Resource;
@@ -19,6 +20,9 @@ import java.util.HashMap;
 /**
  * 预约留言存取：WebSocket 与 HTTP 兜底共用同一落库逻辑。
  * 消息实时性要求高，不分缓存；历史分页命中 (appointment_id, created_at) 索引。
+ *
+ * <p>咨询师留言（senderType=2）落库后异步推送给来访者一条「咨询师回复」通知，
+ * 覆盖 HTTP 与 WS 两条路径；受用户通知开关控制（NotificationService 内部判断）。</p>
  *
  * @author cc
  * @date 2026-09-14
@@ -34,6 +38,8 @@ public class AppointmentMessageService {
     private AppointmentMessageMapper appointmentMessageMapper;
     @Resource
     private AppointmentConvert appointmentConvert;
+    @Resource
+    private NotificationService notificationService;
 
     /**
      * 保存一条留言
@@ -53,6 +59,13 @@ public class AppointmentMessageService {
                 .build();
         appointmentMessageMapper.insert(message);
         log.info("预约留言已保存: appointmentId={}, senderType={}", appointment.getId(), senderType);
+        // 咨询师/管理员留言后，异步给来访者推送通知（用户留言不推送，咨询师主动在会话中）
+        if (senderType != null && senderType == 2 && appointment.getUserId() != null) {
+            String summary = content.length() > 30 ? content.substring(0, 30) + "..." : content;
+            notificationService.createNotification(appointment.getUserId(),
+                    NotificationType.CONSULTANT, "咨询师回复了您", summary,
+                    "APPOINTMENT", appointment.getId());
+        }
         return appointmentConvert.toMessageDTO(message);
     }
 

@@ -2,6 +2,7 @@ package com.cc.controller;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.cc.dto.request.EmailLoginRequestDTO;
+import com.cc.dto.request.EmailRegisterDTO;
 import com.cc.dto.request.SendCodeRequestDTO;
 import com.cc.dto.request.UserLoginRequestDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
@@ -60,6 +61,25 @@ public class UserController {
         UserLoginResponseDTO result = userService.emailLogin(requestDTO);
         operationLogService.record(result.getUserInfo().getId(), result.getUserInfo().getUsername(),
                 "LOGIN", "邮箱验证码登录", CurrentUserUtils.getCurrentClientIp());
+        return Result.ok(result);
+    }
+
+    // 发送邮箱注册验证码（仅未注册邮箱实际发送，已注册邮箱返回成功但不发送——防枚举）
+    @PostMapping("/email/send-register-code")
+    public Result<Void> sendRegisterCode(@Valid @RequestBody SendCodeRequestDTO requestDTO) {
+        userService.sendRegisterCode(requestDTO.getEmail());
+        return Result.ok();
+    }
+
+    // 邮箱验证码注册并登录（审核开启时返回待审核标记，不签发 token）
+    @PostMapping("/email/register")
+    public Result<UserLoginResponseDTO> registerByEmail(@Valid @RequestBody EmailRegisterDTO requestDTO) {
+        UserLoginResponseDTO result = userService.registerByEmail(requestDTO);
+        // 仅在成功签发 token 时记操作日志（审核待通过不记登录日志）
+        if (result.getToken() != null && result.getUserInfo() != null) {
+            operationLogService.record(result.getUserInfo().getId(), result.getUserInfo().getUsername(),
+                    "REGISTER", "邮箱注册并登录", CurrentUserUtils.getCurrentClientIp());
+        }
         return Result.ok(result);
     }
 

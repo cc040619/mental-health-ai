@@ -18,8 +18,8 @@ export const getAppointmentDetail = (id) => {
 }
 
 // 取消预约
-export const cancelAppointment = (id) => {
-    return service.post(`/appointment/${id}/cancel`)
+export const cancelAppointment = (id, reason) => {
+    return service.post(`/appointment/${id}/cancel`, { reason })
 }
 
 // 留言历史（分页倒序）

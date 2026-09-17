@@ -19,6 +19,11 @@ export const changePassword = (data) => {
     return service.put('/user/password', data)
 }
 
+// 首次设置密码（仅无密码用户可用，已有密码则拒绝）
+export const setPassword = (data) => {
+    return service.put('/user/password/set', data)
+}
+
 // 忘记密码重置（免登录，凭邮箱验证码）
 export const resetPassword = (data) => {
     return service.put('/user/password/reset', data)

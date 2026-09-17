@@ -29,6 +29,8 @@ public class SecurityConfig {
             "/api/user/add",
             "/api/user/email/send-code",
             "/api/user/email/login",
+            "/api/user/email/send-register-code",
+            "/api/user/email/register",
             "/api/user/password/reset",
             // 系统设置公开接口：只暴露白名单展示类 key（不含任何开关），前端布局/危机卡片用
             "/api/settings/public",

@@ -4,6 +4,16 @@ export const register = (data) => {
     return service.post('/user/add', data)
 }
 
+// 发送邮箱注册验证码（仅未注册邮箱实际发送，已注册邮箱返回成功但不发送——防枚举）
+export const sendRegisterCode = (data) => {
+    return service.post('/user/email/send-register-code', data)
+}
+
+// 邮箱验证码注册并登录（审核开启时返回待审核标记，不签发 token）
+export const emailRegister = (data) => {
+    return service.post('/user/email/register', data)
+}
+
 export const startSession = (data) => {
     return service.post('/psychological-chat/session/start', data)
 }

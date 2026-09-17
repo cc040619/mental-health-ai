@@ -44,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import ProfileInfo from '@/components/profile/ProfileInfo.vue'
 import ProfileSecurity from '@/components/profile/ProfileSecurity.vue'
@@ -63,6 +63,14 @@ const menuList = [
 ]
 
 const activeMenu = ref('info')
+
+// 从首页"立刻设置密码"跳转过来时，自动展开账号安全
+onMounted(() => {
+    if (sessionStorage.getItem('openSecurityTab') === '1') {
+        activeMenu.value = 'security'
+        sessionStorage.removeItem('openSecurityTab')
+    }
+})
 
 const greetingText = computed(() => {
     try {

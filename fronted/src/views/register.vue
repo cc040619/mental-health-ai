@@ -6,44 +6,40 @@
             <div class="title-text">
                 <!-- 🎨 手绘装饰 emoji -->
                 <h2>✨ 创建您的账户 📖</h2>
-                <p>请填写注册信息</p>
+                <p>邮箱验证码一键注册</p>
             </div>
         </div>
         <div class="form-container">
             <el-form label-position="top" :model="formData" :rules="rules" ref="submitFormRef">
-                <el-form-item label="用户名或邮箱" prop="username">
-                    <el-input v-model="formData.username" placeholder="请输入用户名" size="large">
-                        <!-- 🎨 手绘小图标前缀 -->
-                        <template #prefix>👤</template>
-                    </el-input>
-                </el-form-item>
                 <el-form-item label="邮箱" prop="email">
-                    <el-input v-model="formData.email" placeholder="请输入邮箱" size="large">
+                    <el-input v-model="formData.email" placeholder="请输入QQ邮箱" size="large" @keyup.enter="handleSendCode">
                         <template #prefix>✉️</template>
                     </el-input>
                 </el-form-item>
-                <el-form-item label="昵称" prop="nickname">
-                    <el-input v-model="formData.nickname" placeholder="请输入昵称" size="large">
-                        <template #prefix>😊</template>
-                    </el-input>
-                </el-form-item>
-                <el-form-item label="手机号" prop="phone">
-                    <el-input v-model="formData.phone" placeholder="请输入手机号" size="large">
-                        <template #prefix>📱</template>
-                    </el-input>
-                </el-form-item>
-                <el-form-item label="密码" prop="password">
-                    <el-input v-model="formData.password" placeholder="请输入密码" size="large" type="password" show-password>
-                        <template #prefix>🔒</template>
-                    </el-input>
-                </el-form-item>
-                <el-form-item label="确认密码" prop="confirmPassword">
-                    <el-input v-model="formData.confirmPassword" placeholder="请再次输入密码" size="large" type="password" show-password>
-                        <template #prefix>🔑</template>
-                    </el-input>
+                <el-form-item label="验证码" prop="code">
+                    <div class="code-row">
+                        <el-input
+                            v-model="formData.code"
+                            placeholder="请输入6位验证码"
+                            size="large"
+                            maxlength="6"
+                            @keyup.enter="submitForm(submitFormRef)"
+                        >
+                            <template #prefix>🔑</template>
+                        </el-input>
+                        <el-button
+                            class="send-btn"
+                            size="large"
+                            type="primary"
+                            :disabled="countdown > 0"
+                            @click="handleSendCode"
+                        >
+                            {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
+                        </el-button>
+                    </div>
                 </el-form-item>
                 <el-form-item>
-                    <el-button class="btn" type="primary" size="large" @click="submitForm(submitFormRef)">注册</el-button>
+                    <el-button class="btn" type="primary" size="large" @click="submitForm(submitFormRef)">注册并登录</el-button>
                 </el-form-item>
             </el-form>
         </div>
@@ -51,54 +47,88 @@
 
 </template>
 <script setup>
-import { ref, reactive } from 'vue'
-import { register } from '@/api/frontend'
+import { ref, reactive, onBeforeUnmount } from 'vue'
+import { sendRegisterCode, emailRegister } from '@/api/frontend'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+
 const router = useRouter()
+
 const formData = reactive({
-    "username": "",
-    "email": "",
-    "nickname": "",
-    "phone": "",
-    "password": "",
-    "confirmPassword": "",
-    "gender": 0, // 性别
-    "userType": 1 // 1为普通用户
+    email: '',
+    code: ''
 })
 
 const rules = reactive({
-    "username": [
-        { required: true, message: "请输入用户名", trigger: "blur" }
+    email: [
+        { required: true, message: '请输入邮箱', trigger: 'blur' },
+        { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
     ],
-    "email": [
-        { required: true, message: "请输入邮箱", trigger: "blur" }
-    ],
-    "password": [
-        { required: true, message: "请输入密码", trigger: "blur" }
-    ],
-    "confirmPassword": [
-        { required: true, message: "请再次输入密码", trigger: "blur" }
+    code: [
+        { required: true, message: '请输入验证码', trigger: 'blur' },
+        { min: 6, max: 6, message: '验证码为6位', trigger: 'blur' }
     ]
 })
 
-// 表单提交
+// 验证码倒计时
+const countdown = ref(0)
+let timer = null
+const startCountdown = () => {
+    countdown.value = 60
+    timer = setInterval(() => {
+        countdown.value--
+        if (countdown.value <= 0) {
+            clearInterval(timer)
+            timer = null
+        }
+    }, 1000)
+}
+onBeforeUnmount(() => {
+    if (timer) clearInterval(timer)
+})
 
+// 发送注册验证码
+const handleSendCode = async () => {
+    if (!formData.email) {
+        ElMessage.warning('请先输入邮箱')
+        return
+    }
+    const emailReg = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailReg.test(formData.email)) {
+        ElMessage.warning('邮箱格式不正确')
+        return
+    }
+    try {
+        await sendRegisterCode({ email: formData.email })
+        ElMessage.success('验证码已发送，请查收邮箱')
+        startCountdown()
+    } catch (e) {
+        // 响应拦截器已统一提示
+    }
+}
+
+// 提交注册并登录
 const submitFormRef = ref(null)
 const submitForm = async (formEl) => {
     if (!formEl) return
-    formEl.validate(async (valid) => {
-        register(formData).then(({ data }) => {
-            console.log(data)
-            if (!data) {
-                ElMessage.success('注册成功')
-                // 注册成功后跳转到登录页
+    await formEl.validate(async (valid) => {
+        if (!valid) return
+        try {
+            const data = await emailRegister({ email: formData.email, code: formData.code })
+            // 审核开启：后端返回 message，无 token
+            if (!data || !data.token) {
+                ElMessage.info(data?.message || '已提交注册申请，审核通过后可登录')
                 router.push('/auth/login')
+                return
             }
-            if (data.code === "BUSINESS_ERROR") {
-               ElMessage.error(data.message)
-            }
-        })
+            // 注册并登录成功
+            localStorage.setItem('token', data.token)
+            localStorage.setItem('userInfo', JSON.stringify(data.userInfo))
+            ElMessage.success('注册成功，已自动登录 🎉')
+            router.push('/')
+        } catch (e) {
+            // 响应拦截器已统一提示（如"该邮箱已注册，请直接登录"）
+        }
     })
 }
 </script>
@@ -269,6 +299,41 @@ $rounded: "Comic Sans MS", "Segoe UI Rounded", "Hiragino Sans GB", "Microsoft Ya
 
         :deep(.el-form-item) {
             margin-bottom: 18px;
+        }
+
+        /* 🎨 验证码行 — 输入框 + 获取验证码按钮 */
+        .code-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+
+            :deep(.el-input) {
+                flex: 1;
+            }
+
+            .send-btn {
+                flex-shrink: 0;
+                width: 130px;
+                border: 1.5px dashed $warm-orange;
+                background-color: #FFFCF5;
+                color: $warm-orange-dark;
+                font-family: $handwritten;
+                font-size: 14px;
+                border-radius: 14px;
+                transition: all 0.25s ease;
+
+                &:hover:not(:disabled) {
+                    background-color: rgba(232, 146, 124, 0.12);
+                    border-style: solid;
+                }
+
+                &:disabled {
+                    color: $warm-gray-light;
+                    border-color: $warm-gray-light;
+                    cursor: not-allowed;
+                    background-color: #F5F0E8;
+                }
+            }
         }
 
         /* 🎨 注册按钮 — 暖橙渐变 + 手写字体 + 便签立体感 */

@@ -4,6 +4,8 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.cc.dto.request.EmailLoginRequestDTO;
+import com.cc.dto.request.EmailRegisterDTO;
+import com.cc.dto.request.SetPasswordDTO;
 import com.cc.dto.request.UserLoginRequestDTO;
 import com.cc.dto.request.UserRegisterCommandDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
@@ -23,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.regex.Pattern;
 
 /**
  * 用户业务层，处理登录、注册、查询用户等业务逻辑
@@ -103,16 +106,28 @@ public class UserService {
             throw new BusinessException("用户已被禁用，请联系管理员");
         }
 
-        // 生成JWT token
+        return buildLoginResponse(user);
+    }
+
+    /**
+     * 构建登录响应（JWT 签发 + Redis 白名单 + 更新最后登录时间 + 组装 DTO）。
+     *
+     * <p>账号密码登录、邮箱验证码登录、邮箱注册登录共用此方法。</p>
+     *
+     * @param user 已通过校验的用户实体
+     * @return 登录响应（含 token 与用户详情，hasPassword 已透出）
+     */
+    private UserLoginResponseDTO buildLoginResponse(User user) {
+        // 生成 JWT token
         String token = JwtTokenUtil.generateToken(user.getId(), user.getUsername(), user.getUserType());
 
         // 将 token 写入 Redis 白名单（TTL 与 JWT 过期时间保持一致）
         tokenService.saveLoginToken(user.getId(), token);
 
-        // 更新最后登录时间（用户管理模块列表/详情展示，最小侵入）
+        // 更新最后登录时间
         updateLastLoginAt(user.getId());
 
-        //构建响应体
+        // 构建响应体（hasPassword 由 UserConvert 根据 password 是否非空计算）
         UserLoginResponseDTO.UserDetailResponseDTO userInfo = UserConvert.entityToDetailResponse(user);
         return UserConvert.entityToLoginResponse(token, userInfo);
     }
@@ -235,18 +250,112 @@ public class UserService {
             throw new BusinessException("用户已被禁用，请联系管理员");
         }
 
-        // 生成 JWT token
-        String token = JwtTokenUtil.generateToken(user.getId(), user.getUsername(), user.getUserType());
+        return buildLoginResponse(user);
+    }
 
-        // 将 token 写入 Redis 白名单（TTL 与 JWT 过期时间保持一致）
-        tokenService.saveLoginToken(user.getId(), token);
+    /**
+     * 发送邮箱注册验证码
+     *
+     * <p>防邮箱枚举：对已注册邮箱返回成功但不真正发送（与未注册返回一致文案）；
+     * 仅对未注册邮箱实际发送验证码。验证码存储/校验/邮件发送复用 {@link EmailService}
+     * 的同一套逻辑（Redis key 与登录共用，都是邮箱归属验证，互用无害）。</p>
+     *
+     * @param email 目标邮箱
+     */
+    public void sendRegisterCode(String email) {
+        if (!StringUtils.hasText(email)) {
+            throw new BusinessException("邮箱不能为空");
+        }
+        boolean registered = emailExists(email);
+        if (registered) {
+            // ponytail: 已注册邮箱不发送但返回成功，防止攻击者通过是否收到邮件枚举已注册账号
+            return;
+        }
+        // 未注册邮箱：复用登录验证码生成/存储/邮件发送逻辑
+        emailService.sendLoginCode(email);
+    }
 
-        // 更新最后登录时间（与账号密码登录一致，最小侵入）
-        updateLastLoginAt(user.getId());
+    /**
+     * 邮箱验证码注册并登录
+     *
+     * <p>流程：校验验证码 → 注册开关 → 邮箱未注册校验 → 创建用户（无密码账户）→
+     * 注册审核开启时返回待审核标记（不签发 token），否则签发 token 直接登录。</p>
+     *
+     * @param registerDTO 邮箱 + 验证码
+     * @return 登录响应（审核开启时 token/userInfo 为 null，message 携带提示文案）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public UserLoginResponseDTO registerByEmail(EmailRegisterDTO registerDTO) {
+        // 校验验证码（复用登录验证码校验逻辑，校验成功后删除验证码防重放）
+        emailService.verifyLoginCode(registerDTO.getEmail(), registerDTO.getCode());
 
-        // 构建响应体
-        UserLoginResponseDTO.UserDetailResponseDTO userInfo = UserConvert.entityToDetailResponse(user);
-        return UserConvert.entityToLoginResponse(token, userInfo);
+        // 注册开关
+        if (!sysConfigService.getBoolean(SysConfigService.KEY_REGISTER_ENABLED, true)) {
+            throw new BusinessException("暂未开放注册，请联系管理员");
+        }
+
+        // 邮箱已注册拒绝（验证码仅对未注册邮箱有效，此处拒绝不引入枚举泄露）
+        if (emailExists(registerDTO.getEmail())) {
+            throw new BusinessException("该邮箱已注册，请直接登录");
+        }
+
+        // 注册审核开关：开启时新用户进入待审核状态，不签发 token
+        boolean reviewEnabled = sysConfigService.getBoolean(SysConfigService.KEY_REGISTER_REVIEW, false);
+        Integer status = reviewEnabled ? UserStatus.PENDING.getCode() : UserStatus.NORMAL.getCode();
+
+        // 创建无密码账户（username=email、password 空串、nickname 随机生成）
+        User user = UserConvert.registerByEmailToEntity(registerDTO.getEmail(), status);
+        userMapper.insert(user);
+
+        log.info("用户邮箱注册成功, userId={}, email={}, review={}", user.getId(), registerDTO.getEmail(), reviewEnabled);
+
+        if (reviewEnabled) {
+            // 审核开启：不签发 token，返回待审核标记
+            return UserLoginResponseDTO.builder()
+                    .message("已提交注册申请，审核通过后可登录")
+                    .build();
+        }
+
+        // 审核关闭：直接签发 token 登录
+        return buildLoginResponse(user);
+    }
+
+    /**
+     * 首次设置密码（仅无密码用户可用）
+     *
+     * <p>已有密码用户调用会被拒绝，应走修改密码（需旧密码）流程。</p>
+     *
+     * @param userId 当前登录用户ID
+     * @param setPasswordDTO 新密码 + 确认密码
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void setPassword(Long userId, SetPasswordDTO setPasswordDTO) {
+        // 校验两次密码一致
+        if (!setPasswordDTO.getPassword().equals(setPasswordDTO.getConfirmPassword())) {
+            throw new BusinessException("两次输入密码不一致");
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 已有密码拒绝（防覆盖：有密码用户必须走修改密码校验旧密码）
+        if (StringUtils.hasText(user.getPassword())) {
+            throw new BusinessException("您已设置密码，请使用修改密码");
+        }
+
+        // 密码规则校验（与前端正则一致：大于8位，含字母+数字+特殊符号）
+        if (!Pattern.matches(SetPasswordDTO.PASSWORD_REGEX, setPasswordDTO.getPassword())) {
+            throw new BusinessException("密码需大于8位，且包含字母、数字和特殊符号");
+        }
+
+        user.setPassword(passwordEncoder.encode(setPasswordDTO.getPassword().trim()));
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        // ponytail: 不在日志中打印密码
+        log.info("用户首次设置密码成功, userId={}", userId);
     }
 
     /**
@@ -325,6 +434,12 @@ public class UserService {
     private boolean usernameExists(String username) {
         return userMapper.selectCount(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, username)) > 0;
+    }
+
+    /** 判断邮箱是否已注册 */
+    private boolean emailExists(String email) {
+        return userMapper.selectCount(new LambdaQueryWrapper<User>()
+                .eq(User::getEmail, email)) > 0;
     }
 
     /** 生成随机初始密码（8 位，去易混淆字符）；包可见以便单测断言长度/字符集 */

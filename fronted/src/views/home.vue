@@ -67,6 +67,24 @@
             <div class="bottom-dashed"></div>
             <span class="bottom-signature">— 你的情绪小树洞 🌱</span>
         </div>
+
+        <!-- ===== 首次设置密码提醒弹窗（仅无密码用户且本会话未弹过时展示） ===== -->
+        <el-dialog
+            v-model="pwdReminderVisible"
+            title="🔒 温馨提示"
+            width="400px"
+            :close-on-click-modal="false"
+            class="pwd-reminder-dialog"
+        >
+            <div class="pwd-reminder-content">
+                <p class="pwd-reminder-text">您还没有设置密码哦～</p>
+                <p class="pwd-reminder-sub">设置密码后可使用账号密码登录，账户更安全 🛡️</p>
+            </div>
+            <template #footer>
+                <el-button @click="handleLaterPwd">稍后设置</el-button>
+                <el-button type="primary" @click="handleSetPwdNow">立刻设置</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 <script setup>
@@ -78,10 +96,42 @@ const router = useRouter()
 
 // 首页轮播（后端已过滤启用中并按排序返回，空数据不渲染）
 const banners = ref([])
+
+// ===== 首次设置密码提醒 =====
+const pwdReminderVisible = ref(false)
+
+const handleLaterPwd = () => {
+    // 本会话不再弹，下次登录（新会话）再提醒
+    sessionStorage.setItem('pwdReminderShown', '1')
+    pwdReminderVisible.value = false
+}
+
+const handleSetPwdNow = () => {
+    pwdReminderVisible.value = false
+    sessionStorage.setItem('pwdReminderShown', '1')
+    // 标记进入个人中心后自动展开账号安全（设置密码）
+    sessionStorage.setItem('openSecurityTab', '1')
+    router.push('/profile')
+}
+
+const checkPwdReminder = () => {
+    try {
+        const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+        // 无密码用户且本会话未弹过提醒
+        if (userInfo.hasPassword === false && !sessionStorage.getItem('pwdReminderShown')) {
+            pwdReminderVisible.value = true
+        }
+    } catch (e) {
+        // 忽略解析异常
+    }
+}
+
 onMounted(() => {
     getBanners().then(data => {
         banners.value = data || []
     }).catch(() => {})
+    // 首次密码设置提醒（延迟到轮播加载后，避免抢焦点）
+    checkPwdReminder()
 })
 
 // 轮播跳转（后端已白名单校验仅 http/https）
@@ -525,6 +575,24 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
                 font-size: 14px;
             }
         }
+    }
+}
+
+// ===== 首次设置密码提醒弹窗 =====
+.pwd-reminder-content {
+    text-align: center;
+    padding: 8px 0;
+    .pwd-reminder-text {
+        font-size: 18px;
+        font-weight: 600;
+        color: $text-primary;
+        margin: 0 0 8px;
+        font-family: $font-handwritten;
+    }
+    .pwd-reminder-sub {
+        font-size: 14px;
+        color: $text-secondary;
+        margin: 0;
     }
 }
 </style>

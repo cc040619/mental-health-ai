@@ -263,7 +263,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import PageHead from '@/components/PageHead.vue'
@@ -561,6 +561,10 @@ const loadStats = () => {
 
 onBeforeUnmount(() => {
     disposeStatsCharts()
+})
+
+onMounted(() => {
+    load()
 })
 
 loadConsultants()

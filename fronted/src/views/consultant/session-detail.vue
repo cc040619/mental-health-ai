@@ -56,6 +56,9 @@
                                 <div v-if="detail.problemDesc" class="user-problem">
                                     <span class="label">咨询问题：</span>{{ detail.problemDesc }}
                                 </div>
+                                <div v-if="detail.status === 'CANCELED' && detail.cancelReason" class="user-problem">
+                                    <span class="label">取消原因：</span>{{ detail.cancelReason }}
+                                </div>
                             </div>
                         </div>
                     </el-tab-pane>

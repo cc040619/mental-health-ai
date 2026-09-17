@@ -8,7 +8,8 @@ import com.cc.dto.response.ProfileResponseDTO;
 import com.cc.dto.response.UserLoginResponseDTO;
 import com.cc.entity.User;
 import com.cc.enums.UserStatus;
-
+import com.cc.util.NicknameGenerator;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
@@ -38,6 +39,7 @@ public class UserConvert {
                 .displayName(user.getDisplayName())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .hasPassword(StringUtils.hasText(user.getPassword()))
                 .build();
     }
 
@@ -62,6 +64,7 @@ public class UserConvert {
                 .displayName(user.getDisplayName())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .hasPassword(StringUtils.hasText(user.getPassword()))
                 .build();
     }
 
@@ -142,6 +145,27 @@ public class UserConvert {
                 .birthday(commandDTO.getBirthday())
                 .userType(commandDTO.getUserType())
                 .status(UserStatus.NORMAL.getCode())
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+    }
+
+    /**
+     * 邮箱注册转实体：username=email、password 空串（无密码账户）、nickname 随机生成、
+     * userType=1、gender 默认 0。status 由调用方根据注册审核开关设置。
+     *
+     * <p>无密码机制：password 存空串（不 BCrypt），BCrypt.matches 对空串恒返回 false，
+     * 密码登录天然失败；邮箱验证码登录不受影响；hasPassword 由非空判断得出。</p>
+     */
+    public static User registerByEmailToEntity(String email, Integer status) {
+        return User.builder()
+                .username(email)
+                .email(email)
+                .password("")
+                .nickname(NicknameGenerator.generate())
+                .userType(1)
+                .gender(0)
+                .status(status)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();

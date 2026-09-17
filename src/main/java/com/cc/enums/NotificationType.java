@@ -14,7 +14,8 @@ public enum NotificationType {
     ANNOUNCEMENT("ANNOUNCEMENT", "系统公告"),
     APPOINTMENT("APPOINTMENT", "预约通知"),
     INTERACTION("INTERACTION", "互动通知"),
-    ASSESSMENT("ASSESSMENT", "测评提醒");
+    ASSESSMENT("ASSESSMENT", "测评提醒"),
+    CONSULTANT("CONSULTANT", "咨询师回复");
 
     private final String code;
     private final String label;

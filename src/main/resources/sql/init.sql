@@ -1243,6 +1243,7 @@ CREATE TABLE `user_notify_setting`
     `appointment_on`            tinyint                                                      NOT NULL DEFAULT 1 COMMENT '预约通知开关 0:关 1:开',
     `interaction_on`            tinyint                                                      NOT NULL DEFAULT 1 COMMENT '互动通知开关 0:关 1:开',
     `assessment_on`             tinyint                                                      NOT NULL DEFAULT 1 COMMENT '测评提醒开关 0:关 1:开',
+    `consultant_on`             tinyint                                                      NOT NULL DEFAULT 1 COMMENT '咨询师回复开关 0:关 1:开',
     `assessment_frequency`      varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'WEEKLY' COMMENT '测评提醒频率：NONE关闭/WEEKLY每周/DAILY每天',
     `last_assessment_remind_at` datetime                                                     NULL DEFAULT NULL COMMENT '上次测评提醒时间(防重复)',
     `created_at`                datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -1349,6 +1350,7 @@ CREATE TABLE `appointment`
     INDEX `idx_user_status` (`user_id` ASC, `status` ASC) USING BTREE,
     INDEX `idx_consultant` (`consultant_id` ASC) USING BTREE,
     INDEX `idx_status_date` (`status` ASC, `appointment_date` ASC) USING BTREE,
+    INDEX `idx_user_consultant_cancel` (`user_id` ASC, `consultant_id` ASC, `status` ASC, `canceled_at` ASC) USING BTREE,
     CONSTRAINT `fk_appt_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT `fk_appt_consultant` FOREIGN KEY (`consultant_id`) REFERENCES `consultant` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT `fk_appt_slot` FOREIGN KEY (`slot_id`) REFERENCES `appointment_slot` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT

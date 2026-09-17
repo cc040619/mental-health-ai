@@ -45,6 +45,7 @@ public class NotifySettingService {
         setting.setAppointmentOn(dto.getAppointmentOn());
         setting.setInteractionOn(dto.getInteractionOn());
         setting.setAssessmentOn(dto.getAssessmentOn());
+        setting.setConsultantOn(dto.getConsultantOn());
         setting.setAssessmentFrequency(dto.getAssessmentFrequency());
         settingMapper.updateById(setting);
         log.info("更新消息设置: userId={}", userId);
@@ -64,6 +65,7 @@ public class NotifySettingService {
                 .appointmentOn(1)
                 .interactionOn(1)
                 .assessmentOn(1)
+                .consultantOn(1)
                 .assessmentFrequency(AssessmentFrequency.WEEKLY.getCode())
                 .build();
         settingMapper.insert(setting);
@@ -76,6 +78,7 @@ public class NotifySettingService {
         dto.setAppointmentOn(s.getAppointmentOn());
         dto.setInteractionOn(s.getInteractionOn());
         dto.setAssessmentOn(s.getAssessmentOn());
+        dto.setConsultantOn(s.getConsultantOn());
         dto.setAssessmentFrequency(s.getAssessmentFrequency());
         return dto;
     }

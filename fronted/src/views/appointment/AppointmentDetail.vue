@@ -78,6 +78,19 @@
                 <el-button type="primary" round :loading="reviewSubmitting" @click="submitReview">提交评价</el-button>
             </template>
         </el-dialog>
+
+        <!-- 取消预约弹窗：必填取消原因 + 30 分钟冷却提醒 -->
+        <el-dialog v-model="cancelVisible" title="取消预约" width="460px">
+            <el-alert type="warning" :closable="false" show-icon
+                title="取消后 30 分钟内无法再次预约该咨询师，请慎重考虑" />
+            <el-input v-model="cancelReason" type="textarea" :rows="4" maxlength="500" show-word-limit
+                placeholder="请填写取消原因（必填，500 字以内）" style="margin-top: 16px" />
+            <template #footer>
+                <el-button round @click="cancelVisible = false">再想想</el-button>
+                <el-button type="primary" round :loading="cancelSubmitting" :disabled="!cancelReason.trim()"
+                    @click="submitCancel">确定取消</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -110,6 +123,11 @@ const reviewVisible = ref(false)
 const reviewRating = ref(5)
 const reviewContent = ref('')
 const reviewSubmitting = ref(false)
+
+// 取消预约弹窗
+const cancelVisible = ref(false)
+const cancelReason = ref('')
+const cancelSubmitting = ref(false)
 
 const isSelf = (m) => Number(m.senderType) === selfType
 
@@ -171,14 +189,24 @@ const onSend = () => {
 }
 
 const onCancel = () => {
-    ElMessageBox.confirm(
-        `确定取消 ${appointment.value.appointmentDate} ${appointment.value.startTime} 的预约吗？取消后时段将开放给其他来访者。`,
-        '取消预约',
-        { confirmButtonText: '确定取消', cancelButtonText: '再想想', type: 'warning', roundButton: true }
-    ).then(() => cancelAppointment(appointment.value.id)).then(() => {
-        ElNotification({ title: '已取消预约', message: '时段已释放 🌿', type: 'info' })
+    cancelReason.value = ''
+    cancelVisible.value = true
+}
+
+const submitCancel = () => {
+    const reason = cancelReason.value.trim()
+    if (!reason) {
+        ElMessage.warning('请填写取消原因')
+        return
+    }
+    cancelSubmitting.value = true
+    cancelAppointment(appointment.value.id, reason).then(() => {
+        ElNotification({ title: '已取消预约', message: '时段已释放，30 分钟内无法再次预约该咨询师 🌿', type: 'info' })
+        cancelVisible.value = false
         loadDetail()
-    }).catch(() => {})
+    }).finally(() => {
+        cancelSubmitting.value = false
+    })
 }
 
 const submitReview = () => {

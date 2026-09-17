@@ -42,6 +42,9 @@ public class UserNotifySetting {
     @TableField("assessment_on")
     private Integer assessmentOn;
 
+    @TableField("consultant_on")
+    private Integer consultantOn;
+
     // NONE/WEEKLY/DAILY
     @TableField("assessment_frequency")
     private String assessmentFrequency;

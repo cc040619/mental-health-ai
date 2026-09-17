@@ -36,6 +36,11 @@ public class NotifySettingUpdateDTO {
     @Max(value = 1, message = "开关值非法")
     private Integer assessmentOn;
 
+    @NotNull(message = "咨询师回复开关不能为空")
+    @Min(value = 0, message = "开关值非法")
+    @Max(value = 1, message = "开关值非法")
+    private Integer consultantOn;
+
     @NotBlank(message = "测评提醒频率不能为空")
     @Pattern(regexp = "NONE|WEEKLY|DAILY", message = "测评提醒频率仅支持 NONE/WEEKLY/DAILY")
     private String assessmentFrequency;

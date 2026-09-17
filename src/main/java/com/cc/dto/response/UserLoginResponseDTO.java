@@ -18,6 +18,8 @@ public class UserLoginResponseDTO {
     private String token;
     private String roleType;
     private UserDetailResponseDTO userInfo;
+    /** 注册审核开启时返回的提示文案（如"已提交注册申请，审核通过后可登录"），正常登录为 null */
+    private String message;
     @Builder
     @Data
     public static class UserDetailResponseDTO {
@@ -37,5 +39,7 @@ public class UserLoginResponseDTO {
         private String displayName;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        /** 是否已设置密码（password 非空）；新注册邮箱用户为 false，需引导设置密码 */
+        private Boolean hasPassword;
     }
 }

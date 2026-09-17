@@ -40,6 +40,17 @@
         <el-switch v-model="form.interactionOn" :active-value="1" :inactive-value="0" />
       </div>
 
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-icon">👩‍⚕️</span>
+          <div>
+            <div class="setting-title">咨询师回复</div>
+            <div class="setting-desc">咨询师在咨询会话中给你留言时通知我</div>
+          </div>
+        </div>
+        <el-switch v-model="form.consultantOn" :active-value="1" :inactive-value="0" />
+      </div>
+
       <div class="setting-row assessment-row">
         <div class="setting-info">
           <span class="setting-icon">🧭</span>
@@ -75,6 +86,7 @@ const form = reactive({
   announcementOn: 1,
   appointmentOn: 1,
   interactionOn: 1,
+  consultantOn: 1,
   assessmentOn: 1,
   assessmentFrequency: 'WEEKLY'
 })
@@ -87,6 +99,7 @@ onMounted(() => {
         announcementOn: data.announcementOn ?? 1,
         appointmentOn: data.appointmentOn ?? 1,
         interactionOn: data.interactionOn ?? 1,
+        consultantOn: data.consultantOn ?? 1,
         assessmentOn: data.assessmentOn ?? 1,
         assessmentFrequency: data.assessmentFrequency || 'WEEKLY'
       })

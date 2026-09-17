@@ -83,6 +83,18 @@ public class AppointmentService {
         Long userId = CurrentUserUtils.getCurrentUserId();
         Consultant consultant = consultantService.getActiveEntity(dto.getConsultantId());
 
+        // 取消冷却：同一用户 30 分钟内取消过该咨询师的预约则拒绝再次预约（DB 校验，不加 Redis）。
+        // 仅约束用户端创建路径；管理端/咨询师端代建或改期不受限（管理特权）。
+        // ponytail: 固定 30 分钟，不做配置化；如需可调改为读取咨询师/系统配置即可。
+        Long recentCancel = appointmentMapper.selectCount(new LambdaQueryWrapper<Appointment>()
+                .eq(Appointment::getUserId, userId)
+                .eq(Appointment::getConsultantId, consultant.getId())
+                .eq(Appointment::getStatus, AppointmentStatus.CANCELED.name())
+                .gt(Appointment::getCanceledAt, LocalDateTime.now().minusMinutes(30)));
+        if (recentCancel != null && recentCancel > 0) {
+            throw new BusinessException("您刚取消了该咨询师的预约，30 分钟内无法再次预约，请稍后再试");
+        }
+
         AppointmentSlot slot = appointmentSlotMapper.selectById(dto.getSlotId());
         LocalDate today = LocalDate.now();
         if (slot == null
@@ -158,17 +170,25 @@ public class AppointmentService {
 
     /**
      * 用户取消预约：PENDING/CONFIRMED 开始前可取消；受该咨询师 cancel_hours_before 时限约束；
-     * 取消后释放时段。咨询师/管理员取消为管理特权，不受此时限约束（见 consultantCancel/adminChangeStatus）。
+     * 取消原因必填（trim 后落库，≤500 字由 DTO 校验）；取消后释放时段。
+     * 咨询师/管理员取消为管理特权，不受此时限约束（见 consultantCancel/adminChangeStatus）。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void cancelByUser(Long id) {
+    public void cancelByUser(Long id, String cancelReason) {
         Long userId = CurrentUserUtils.getCurrentUserId();
         Appointment appointment = appointmentMapper.selectById(id);
         if (appointment == null || !userId.equals(appointment.getUserId())) {
             throw new BusinessException("A0301", "预约不存在或无权操作", null);
         }
+        if (cancelReason == null || cancelReason.isBlank()) {
+            throw new BusinessException("请填写取消原因");
+        }
+        String reason = cancelReason.trim();
+        if (reason.length() > 500) {
+            throw new BusinessException("取消原因不能超过500字");
+        }
         assertWithinUserCancelWindow(appointment);
-        doCancel(appointment, null);
+        doCancel(appointment, reason);
         log.info("用户取消预约: appointmentId={}, userId={}", id, userId);
     }
 

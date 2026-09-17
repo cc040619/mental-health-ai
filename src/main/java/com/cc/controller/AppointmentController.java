@@ -1,6 +1,7 @@
 package com.cc.controller;
 
 import com.cc.common.Result;
+import com.cc.dto.request.AppointmentCancelDTO;
 import com.cc.dto.request.AppointmentCreateDTO;
 import com.cc.dto.request.AppointmentMessageDTO;
 import com.cc.dto.request.ConsultantReviewDTO;
@@ -61,10 +62,10 @@ public class AppointmentController {
         return Result.ok(appointmentService.detail(id));
     }
 
-    /** 取消预约（PENDING 可取消，CONFIRMED 仅开始前可取消） */
+    /** 取消预约（PENDING 可取消，CONFIRMED 仅开始前可取消；取消原因必填） */
     @PostMapping("/{id}/cancel")
-    public Result<Void> cancel(@PathVariable Long id) {
-        appointmentService.cancelByUser(id);
+    public Result<Void> cancel(@PathVariable Long id, @Valid @RequestBody AppointmentCancelDTO dto) {
+        appointmentService.cancelByUser(id, dto.getReason());
         return Result.ok();
     }
 

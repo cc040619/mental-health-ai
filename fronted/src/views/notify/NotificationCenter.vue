@@ -42,7 +42,7 @@
               <span class="item-title">{{ item.title }}</span>
               <span class="item-type">{{ typeLabel(item) }}</span>
             </div>
-            <p class="item-content">{{ item.content }}</p>
+            <p class="item-content" v-html="item.content"></p>
             <span class="item-time">{{ formatRelative(item.createdAt) }}</span>
           </div>
           <span class="item-arrow" v-if="item.jumpable">›</span>
@@ -87,6 +87,7 @@ const tabs = [
   { code: 'INTERACTION', label: '💬 互动' },
   { code: 'ANNOUNCEMENT', label: '📢 公告' },
   { code: 'APPOINTMENT', label: '📅 预约' },
+  { code: 'CONSULTANT', label: '👩‍⚕️ 咨询师' },
   { code: 'ASSESSMENT', label: '🧭 测评提醒' }
 ]
 
@@ -108,7 +109,8 @@ const TYPE_META = {
   INTERACTION: { emoji: '💬', label: '互动' },
   APPOINTMENT: { emoji: '📅', label: '预约' },
   ASSESSMENT: { emoji: '🧭', label: '测评提醒' },
-  ANNOUNCEMENT: { emoji: '📢', label: '公告' }
+  ANNOUNCEMENT: { emoji: '📢', label: '公告' },
+  CONSULTANT: { emoji: '👩‍⚕️', label: '咨询师' }
 }
 
 const typeEmoji = (item) => item.kind === 'a' ? '📢' : (TYPE_META[item.type]?.emoji || '🔔')
@@ -207,9 +209,11 @@ const onClickItem = (item) => {
       router.push(`/community/post/${item.relatedId}`)
     } else if (item.relatedType === 'ASSESSMENT') {
       router.push('/assessment')
+    } else if (item.relatedType === 'APPOINTMENT' && item.relatedId) {
+      router.push(`/appointments/${item.relatedId}`)
     }
   }
-  item.jumpable = item.relatedType === 'POST' || item.relatedType === 'ASSESSMENT'
+  item.jumpable = item.relatedType === 'POST' || item.relatedType === 'ASSESSMENT' || item.relatedType === 'APPOINTMENT'
 
   if (!item.isRead) {
     markNotificationRead(item.id).then(() => {
@@ -256,7 +260,7 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
   font-family: $font-rounded;
   color: $text-primary;
   padding: 24px 16px 80px;
-  max-width: 820px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -278,6 +282,7 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
   border-radius: $radius-lg;
   box-shadow: $shadow-card;
   padding: 18px;
+  min-height: 480px;
 }
 
 .toolbar {
@@ -433,6 +438,11 @@ $font-rounded: "Nunito", "Quicksand", "PingFang SC", "Microsoft YaHei", sans-ser
   color: $text-regular;
   line-height: 1.6;
   word-break: break-all;
+
+  /* 公告内容为富文本，重置内部标签默认边距，避免列表预览留白过大 */
+  :deep(p) {
+    margin: 0;
+  }
 }
 
 .item-time {

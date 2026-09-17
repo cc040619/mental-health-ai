@@ -42,6 +42,9 @@ public class SessionDetailResponseDTO {
 
     private String problemDesc;
 
+    /** 取消原因（CANCELED 时展示，咨询师可见） */
+    private String cancelReason;
+
     /** 咨询记录（无则 null，前端展示空模板） */
     private ConsultationRecordResponseDTO record;
 }
