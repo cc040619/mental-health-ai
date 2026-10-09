@@ -47,6 +47,9 @@ public class KnowledgeArticleService {
     /** 状态取值：0草稿 1已发布 2已下线 */
     private static final Set<Integer> VALID_STATUS = Set.of(0, 1, 2);
 
+    /** 已发布状态：RAG 建索引与检索唯一可见口径（管理员同样只看已发布） */
+    private static final int PUBLISHED_STATUS = 1;
+
     /** 批量上架/下架允许的目标状态 */
     private static final Set<Integer> BATCH_STATUS_ALLOWED = Set.of(1, 2);
 
@@ -112,6 +115,52 @@ public class KnowledgeArticleService {
         long currentPage = queryDTO.getCurrentPage() != null && queryDTO.getCurrentPage() > 0 ? queryDTO.getCurrentPage() : 1L;
         Page<ArticleSimpleResponseDTO> page = new Page<>(currentPage, pageSize);
         return knowledgeArticleMapper.selectPageWithRelation(page, queryDTO, sortColumn, sortDirection);
+    }
+
+    // ==================== RAG 索引/检索只读查询 ====================
+
+    /**
+     * 全量已发布文章（RAG 建索引用），仅标题/摘要/正文参与检索，不含草稿与已下线
+     *
+     * @param limit 上限条数
+     */
+    public List<KnowledgeArticle> listAllPublished(int limit) {
+        return knowledgeArticleMapper.selectList(new LambdaQueryWrapper<KnowledgeArticle>()
+                .eq(KnowledgeArticle::getStatus, PUBLISHED_STATUS)
+                .orderByDesc(KnowledgeArticle::getPublishedAt)
+                .last("LIMIT " + Math.max(1, limit)));
+    }
+
+    /**
+     * 按 ID 批量回查已发布文章：向量命中后复核可见性（索引可能落后于库）
+     *
+     * @param ids 文章ID列表
+     */
+    public List<KnowledgeArticle> listPublishedByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return knowledgeArticleMapper.selectList(new LambdaQueryWrapper<KnowledgeArticle>()
+                .eq(KnowledgeArticle::getStatus, PUBLISHED_STATUS)
+                .in(KnowledgeArticle::getId, ids));
+    }
+
+    /**
+     * 关键词检索已发布文章（标题或摘要 LIKE），供 RAG 关键词降级路径使用
+     *
+     * @param keyword 关键词（调用方已清洗，≤50 字）
+     * @param limit   上限条数
+     */
+    public List<KnowledgeArticle> searchPublishedByKeyword(String keyword, int limit) {
+        if (!StringUtils.hasText(keyword)) {
+            return List.of();
+        }
+        return knowledgeArticleMapper.selectList(new LambdaQueryWrapper<KnowledgeArticle>()
+                .eq(KnowledgeArticle::getStatus, PUBLISHED_STATUS)
+                .and(w -> w.like(KnowledgeArticle::getTitle, keyword)
+                        .or().like(KnowledgeArticle::getSummary, keyword))
+                .orderByDesc(KnowledgeArticle::getPublishedAt)
+                .last("LIMIT " + Math.max(1, limit)));
     }
 
     /**

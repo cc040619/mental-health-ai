@@ -44,8 +44,14 @@ const renderedContent = computed(() => {
   html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>')
   html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>')
 
-  // 处理链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+  // 处理链接：仅允许站内知识库文章/社区帖子链接与 https 外链，其余降级为纯文本（防 javascript: 等伪链接 XSS）
+  const SAFE_LINK = /^(?:\/knowledge\/article\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\/community\/post\/\d{1,19}|https:\/\/[^\s"'<>]+)$/
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    const href = url.trim()
+    return SAFE_LINK.test(href)
+      ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`
+      : `${text}（${href}）`
+  })
 
   // 处理无序列表
   html = html.replace(/^- (.*)$/gm, '<li>$1</li>')

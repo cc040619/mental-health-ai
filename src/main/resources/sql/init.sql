@@ -95,16 +95,20 @@ VALUES (45, 27, 2, 'COMPLETED', 'AUTO', 2, 0, 3, NULL, '2025-11-11 10:12:13', '2
 DROP TABLE IF EXISTS `consultation_message`;
 CREATE TABLE `consultation_message`
 (
-    `id`           bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '消息ID',
-    `session_id`   bigint                                                       NOT NULL COMMENT '会话ID',
-    `sender_type`  tinyint                                                      NOT NULL COMMENT '发送者类型 1:用户 2:AI助手',
-    `message_type` tinyint                                                      NULL DEFAULT 1 COMMENT '消息类型 1:文本',
-    `content`      text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci        NOT NULL COMMENT '消息内容',
-    `emotion_tag`  varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '情绪标签',
-    `ai_model`     varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '使用的AI模型',
-    `created_at`   datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    `id`            bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '消息ID',
+    `session_id`    bigint                                                       NOT NULL COMMENT '会话ID',
+    `sender_type`   tinyint                                                      NOT NULL COMMENT '发送者类型 1:用户 2:AI助手',
+    `message_type`  tinyint                                                      NULL DEFAULT 1 COMMENT '消息类型 1:文本',
+    `content`       text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci        NOT NULL COMMENT '消息内容',
+    `emotion_tag`   varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '情绪标签',
+    `emotion_value` decimal(5, 2)                                                NULL DEFAULT NULL COMMENT '情绪值(0-100，情绪分析写路径同步写入)',
+    `ai_model`      varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '使用的AI模型',
+    `is_favorite`   tinyint                                                      NOT NULL DEFAULT 0 COMMENT '是否收藏 0:否 1:是',
+    `favorited_at`  datetime                                                     NULL DEFAULT NULL COMMENT '收藏时间',
+    `created_at`    datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_session_message` (`session_id` ASC, `created_at` ASC) USING BTREE,
+    INDEX `idx_session_favorite` (`session_id` ASC, `is_favorite` ASC) USING BTREE,
     CONSTRAINT `consultation_message_ibfk_1` FOREIGN KEY (`session_id`) REFERENCES `consultation_session` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 111
@@ -115,41 +119,41 @@ CREATE TABLE `consultation_message`
 -- ----------------------------
 -- Records of consultation_message
 -- ----------------------------
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (98, 17, 1, 1, '你好，我叫小明', NULL, NULL, '2025-09-14 14:11:53');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (99, 17, 2, 1,
         '你好呀小明！😊 很高兴认识你～我是你的心理健康助手，可以叫我\"暖心\"或者\"小暖\"都可以。最近过得怎么样呀？作为大学生，是不是有很多想分享的事情呢？💬\n\n有什么想聊的都可以跟我说说，无论是学习压力、人际关系，还是对未来的一些迷茫和困惑...我都在这里认真听着呢✨',
         NULL, 'openai', '2025-09-14 14:11:58');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (100, 17, 1, 1, '我考上研究生了，但是很迷茫', NULL, NULL, '2025-09-14 14:12:09');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (101, 17, 2, 1,
         '恭喜你考上研究生呀小明！🎉 这真是个值得骄傲的好消息呢～不过听到你说感到迷茫，这种心情我完全能理解😊\n\n读研确实和本科阶段很不一样呢。可以跟我多说说你的迷茫具体来自哪里吗？✨比如是：\n1️⃣ 担心学术压力太大？\n2️⃣ 对研究方向不确定？\n3️⃣ 还是对未来的职业规划有些困惑？\n\n你知道吗？这种\"上岸后的迷茫\"其实很常见哦～就像站在新的起跑线上，眼前有太多可能性时的正常反应🌟\n\n要不要我们一起来梳理看看？慢慢说，我都在听💛',
         NULL, 'openai', '2025-09-14 14:12:19');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (102, 17, 1, 1, '能给我一些读研建议吗', NULL, NULL, '2025-09-14 14:12:29');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (103, 17, 2, 1,
         '当然可以呀，小明！🎓 作为即将开启研究生生涯的你，这些建议或许能帮到你呢～✨\n\n🔍 **学术适应篇**：\n1️⃣ 主动联系导师：开学前可以给导师发封邮件，聊聊研究方向和学习计划哦\n2️⃣ 培养文献管理习惯：推荐试试Zotero/EndNote，从第一天就建立文献库\n3️⃣ 每周做学术笔记：记录灵感比事后回忆容易多啦\n\n💡 **心态调整贴士**：\n- 第一学期允许自己\"慢热\"⏳ 很多人需要3-6个月适应节奏\n- 把大目标拆解成季度/月度小目标，成就感UP↑\n- 实验室同门是最佳战友，多分享困惑和资源呀\n\n👩💻 **实用小工具**：\n✓ 番茄工作法APP（专注25分钟+5分钟休息）\n✓ 学术日历标记重要节点\n✓ 定期备份研究数据！（血泪教训预警）\n\n小明注意到你之前提到迷茫，特别想告诉你：研究生阶段迷茫真的太正常了~🤗 建议可以：\n- 9月开学后多参加实验室组会\n- 旁听1-2门相关领域的课\n- 和师兄师姐约咖啡聊聊经验\n\n记得哦，读研是场马拉松不是短跑🏃，找到自己的节奏最重要啦！你现在最想先从哪个方面开始准备呢？💭',
         NULL, 'openai', '2025-09-14 14:12:47');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (104, 18, 1, 1, '头有点疼', NULL, NULL, '2025-11-10 12:57:39');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (105, 19, 1, 1, '头疼', NULL, NULL, '2025-11-10 13:07:18');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (106, 19, 2, 1,
         '听到你说头疼，我能感受到你现在一定不太舒服呢。😔 大学生活确实容易因为学习压力、作息不规律等原因引起头痛。我们先深呼吸几次好吗？🌬️\n\n你可以试着：\n1. 找一个安静的地方闭眼休息5分钟\n2. 轻轻按摩太阳穴\n3. 喝些温水\n4. 如果是因为长时间看电脑，可以做做眼保健操\n\n要记住，你的身体是最重要的～如果持续不适的话，建议去校医院看看。需要我陪你聊聊是什么原因引起的头痛吗？',
         NULL, 'openai', '2025-11-10 13:07:25');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (107, 20, 1, 1, '你好，心情有点不好', NULL, NULL, '2025-11-10 19:05:17');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (108, 20, 2, 1,
         '亲爱的同学，我能感受到你现在的心情不太好。🥺 这种低落的感觉一定让你很不舒服吧？可以跟我聊聊是什么让你感到不开心吗？无论是学习压力、人际关系，还是其他烦恼，我都会认真倾听。\n\n记住，每个人都会有情绪低落的时候，这很正常。你愿意主动说出来，已经是很好的第一步了呢。💪 \n\n（如果你暂时不想说具体原因也没关系，我们可以先聊聊其他让你感觉好一点的事情哦）',
         NULL, 'openai', '2025-11-10 19:05:21');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (109, 21, 1, 1, '我想出去旅游', NULL, NULL, '2025-11-12 08:34:20');
-INSERT INTO `consultation_message`
+INSERT INTO `consultation_message` (`id`, `session_id`, `sender_type`, `message_type`, `content`, `emotion_tag`, `ai_model`, `created_at`)
 VALUES (110, 21, 2, 1,
         '听到你说想出去旅游，我能感受到你对新鲜体验和放松心情的渴望呢～✨  \n\n旅游确实是给自己充电的好方式！不过你现在是遇到什么特别的原因突然想出发吗？比如最近压力有点大，还是单纯想换个环境？🧐  \n\n如果是想调节心情，其实哪怕在学校周边走走、探索些没去过的小店，也能带来新鲜感哦。当然啦，如果条件允许，做好攻略和预算去更远的地方也很棒！需要聊聊具体想去哪里吗？😊  \n\nP.S. 说走就走的旅行听起来很浪漫，但别忘了提前查好天气和交通信息呀～',
         NULL, 'openai', '2025-11-12 08:34:27');
@@ -160,15 +164,25 @@ VALUES (110, 21, 2, 1,
 DROP TABLE IF EXISTS `consultation_session`;
 CREATE TABLE `consultation_session`
 (
-    `id`                      bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '会话ID',
-    `user_id`                 bigint                                                        NOT NULL COMMENT '用户ID',
-    `session_title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '会话标题',
-    `started_at`              datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
-    `last_emotion_analysis`   json                                                          NULL COMMENT '最后一次情绪分析结果(JSON格式)',
-    `last_emotion_updated_at` datetime                                                      NULL DEFAULT NULL COMMENT '最后一次情绪分析更新时间',
+    `id`                      bigint                                                         NOT NULL AUTO_INCREMENT COMMENT '会话ID',
+    `user_id`                 bigint                                                         NOT NULL COMMENT '用户ID',
+    `session_title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '会话标题',
+    `scene`                   varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci   NOT NULL DEFAULT 'OTHER' COMMENT '咨询场景',
+    `started_at`              datetime                                                       NULL DEFAULT CURRENT_TIMESTAMP,
+    `last_emotion_analysis`   json                                                           NULL COMMENT '最后一次情绪分析结果(JSON格式)',
+    `last_emotion_updated_at` datetime                                                       NULL DEFAULT NULL COMMENT '最后一次情绪分析更新时间',
+    `emotion_tag`             varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci   NULL DEFAULT NULL COMMENT '最近主情绪标签(冗余，情绪分析同步写入)',
+    `is_high_quality`         tinyint                                                        NOT NULL DEFAULT 0 COMMENT '0-否 1-高质量(AI训练参考，人工运营标记)',
+    `is_crisis`               tinyint                                                        NOT NULL DEFAULT 0 COMMENT '0-否 1-危机会话(运营关注标记，与用户端自动危机识别解耦)',
+    `mark_note`               varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '标记备注',
+    `summary`                 json                                                           NULL COMMENT '会话总结JSON',
+    `rating`                  tinyint                                                        NULL DEFAULT NULL COMMENT '用户评分1-5',
+    `feedback`                varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '用户文字反馈',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_user_session` (`user_id` ASC, `started_at` ASC) USING BTREE,
     INDEX `idx_last_emotion_updated_at` (`last_emotion_updated_at` ASC) USING BTREE,
+    INDEX `idx_started` (`started_at` ASC) USING BTREE,
+    INDEX `idx_scene` (`scene` ASC) USING BTREE,
     CONSTRAINT `consultation_session_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 22
@@ -179,7 +193,7 @@ CREATE TABLE `consultation_session`
 -- ----------------------------
 -- Records of consultation_session
 -- ----------------------------
-INSERT INTO `consultation_session`
+INSERT INTO `consultation_session` (`id`, `user_id`, `session_title`, `started_at`, `last_emotion_analysis`, `last_emotion_updated_at`)
 VALUES (17, 2, '小暖助手 - 9/14/2025, 2:11:52 PM', '2025-09-14 14:11:53', '{
   \"icon\": \"🤔\",
   \"label\": \"求知\",
@@ -204,7 +218,7 @@ VALUES (17, 2, '小暖助手 - 9/14/2025, 2:11:52 PM', '2025-09-14 14:11:53', '{
     \"制定学习计划\"
   ]
 }', '2025-09-14 14:12:35');
-INSERT INTO `consultation_session`
+INSERT INTO `consultation_session` (`id`, `user_id`, `session_title`, `started_at`, `last_emotion_analysis`, `last_emotion_updated_at`)
 VALUES (18, 2, '小暖助手 - 2025/11/10 12:57:39', '2025-11-10 12:57:39', '{
   \"icon\": \"😐\",
   \"label\": \"平静\",
@@ -222,7 +236,7 @@ VALUES (18, 2, '小暖助手 - 2025/11/10 12:57:39', '2025-11-10 12:57:39', '{
     \"与朋友交流\"
   ]
 }', '2025-11-10 12:57:55');
-INSERT INTO `consultation_session`
+INSERT INTO `consultation_session` (`id`, `user_id`, `session_title`, `started_at`, `last_emotion_analysis`, `last_emotion_updated_at`)
 VALUES (19, 2, '小暖助手 - 2025/11/10 13:07:18', '2025-11-10 13:07:18', '{
   \"icon\": \"😔\",
   \"label\": \"困扰\",
@@ -244,7 +258,7 @@ VALUES (19, 2, '小暖助手 - 2025/11/10 13:07:18', '2025-11-10 13:07:18', '{
     \"轻柔按摩太阳穴\"
   ]
 }', '2025-11-10 13:07:25');
-INSERT INTO `consultation_session`
+INSERT INTO `consultation_session` (`id`, `user_id`, `session_title`, `started_at`, `last_emotion_analysis`, `last_emotion_updated_at`)
 VALUES (20, 2, '小暖助手 - 2025/11/10 19:05:16', '2025-11-10 19:05:16', '{
   \"icon\": \"😢\",
   \"label\": \"低落\",
@@ -266,7 +280,7 @@ VALUES (20, 2, '小暖助手 - 2025/11/10 19:05:16', '2025-11-10 19:05:16', '{
     \"写写心情日记\"
   ]
 }', '2025-11-10 19:05:23');
-INSERT INTO `consultation_session`
+INSERT INTO `consultation_session` (`id`, `user_id`, `session_title`, `started_at`, `last_emotion_analysis`, `last_emotion_updated_at`)
 VALUES (21, 2, '小暖助手 - 2025/11/12 08:34:20', '2025-11-12 08:34:20', '{
   \"icon\": \"😊\",
   \"label\": \"开心\",
@@ -389,22 +403,22 @@ VALUES (28, 4, '2025-11-11', 6, '平静', '开心', '开心', 4, 2,
 DROP TABLE IF EXISTS `knowledge_article`;
 CREATE TABLE `knowledge_article`
 (
-    `id`              varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID(UUID)',
-    `category_id`     bigint                                                        NOT NULL COMMENT '分类ID',
-    `title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章标题',
-    `summary`         text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '文章摘要',
-    `content`         longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '文章内容',
-    `cover_image`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图片',
-    `tags`            varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '标签',
-    `author_id`       bigint                                                        NULL DEFAULT NULL COMMENT '作者ID',
-    `read_count`      int                                                           NULL DEFAULT 0 COMMENT '阅读次数',
-    `like_count`      int                                                           NOT NULL DEFAULT 0 COMMENT '点赞数(冗余字段,article_like 维护)',
-    `comment_count`   int                                                           NOT NULL DEFAULT 0 COMMENT '已通过评论数(冗余字段,article_comment 维护)',
-    `favorite_count`  int                                                           NOT NULL DEFAULT 0 COMMENT '收藏数(冗余字段,user_favorite 维护)',
-    `status`          tinyint                                                       NULL DEFAULT 1 COMMENT '状态 1:已发布',
-    `published_at`    datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
-    `created_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `id`             varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID(UUID)',
+    `category_id`    bigint                                                        NOT NULL COMMENT '分类ID',
+    `title`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章标题',
+    `summary`        text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '文章摘要',
+    `content`        longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '文章内容',
+    `cover_image`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图片',
+    `tags`           varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '标签',
+    `author_id`      bigint                                                        NULL DEFAULT NULL COMMENT '作者ID',
+    `read_count`     int                                                           NULL DEFAULT 0 COMMENT '阅读次数',
+    `status`         tinyint                                                       NULL DEFAULT 1 COMMENT '状态 1:已发布',
+    `published_at`   datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
+    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `like_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '点赞数(冗余字段,article_like 维护)',
+    `comment_count`  int                                                           NOT NULL DEFAULT 0 COMMENT '已通过评论数(冗余字段,article_comment 维护)',
+    `favorite_count` int                                                           NOT NULL DEFAULT 0 COMMENT '收藏数(冗余字段,user_favorite 维护)',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `author_id` (`author_id` ASC) USING BTREE,
     INDEX `idx_category_article` (`category_id` ASC, `published_at` ASC) USING BTREE,
@@ -422,38 +436,38 @@ CREATE TABLE `knowledge_article`
 -- ----------------------------
 -- Records of knowledge_article
 -- ----------------------------
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440001', 1, '如何识别和管理焦虑情绪',
         '焦虑是现代生活中常见的情绪反应，学会识别和管理焦虑对心理健康至关重要。',
         '<p>焦虑是一种正常的情绪反应，但过度的焦虑可能会影响我们的日常生活。本文将介绍如何识别焦虑的症状，以及一些有效的管理方法。</p><h3>识别焦虑的症状</h3><ul><li>心跳加速、出汗</li><li>呼吸急促</li><li>思维混乱</li><li>难以集中注意力</li></ul><h3>管理焦虑的方法</h3><ol><li>深呼吸练习</li><li>正念冥想</li><li>适度运动</li><li>寻求专业帮助</li></ol>',
         '', '焦虑,情绪管理,心理健康', 1, 15, 0, 0, 0, 1, '2025-09-01 10:00:00', '2025-09-01 10:00:00', '2025-09-01 10:00:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440002', 2, '情绪调节的五个有效策略', '掌握情绪调节技巧，让生活更加平衡和谐。',
         '<p>情绪调节是心理健康的重要组成部分。以下是五个经过科学验证的情绪调节策略：</p><h3>1. 认知重构</h3><p>学会从不同角度看待问题，挑战负面思维模式。</p><h3>2. 情绪标记</h3><p>准确识别和命名自己的情绪状态。</p><h3>3. 渐进式肌肉放松</h3><p>通过身体放松来缓解情绪紧张。</p><h3>4. 表达性写作</h3><p>通过写作来处理复杂的情绪体验。</p><h3>5. 社交支持</h3><p>寻求朋友和家人的理解与支持。</p>',
         '', '情绪调节,心理技巧,自我管理', 1, 23, 0, 0, 0, 1, '2025-09-02 14:30:00', '2025-09-02 14:30:00',
         '2025-09-02 14:30:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440003', 3, '职场压力管理指南',
         '在快节奏的工作环境中，学会有效管理压力是职业成功的关键。',
         '<p>职场压力是现代工作生活中不可避免的挑战。本指南将帮助您建立有效的压力管理体系。</p><h3>识别压力源</h3><ul><li>工作量过大</li><li>人际关系紧张</li><li>职业发展焦虑</li><li>工作与生活平衡困难</li></ul><h3>压力管理策略</h3><ol><li>时间管理技巧</li><li>设定合理目标</li><li>建立支持网络</li><li>培养兴趣爱好</li><li>定期休息和放松</li></ol><h3>长期压力预防</h3><p>建立健康的工作习惯和生活方式，预防压力累积。</p>',
         '', '职场压力,时间管理,工作生活平衡', 1, 31, 0, 0, 0, 1, '2025-09-03 09:15:00', '2025-09-03 09:15:00',
         '2025-09-03 09:15:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440004', 4, '建立健康的人际关系', '良好的人际关系是心理健康和生活幸福的基石。',
         '<p>人际关系质量直接影响我们的心理健康和生活满意度。本文将探讨如何建立和维护健康的人际关系。</p><h3>健康关系的特征</h3><ul><li>相互尊重和信任</li><li>有效沟通</li><li>情感支持</li><li>个人边界清晰</li></ul><h3>沟通技巧</h3><ol><li>积极倾听</li><li>表达真实感受</li><li>非暴力沟通</li><li>冲突解决</li></ol><h3>维护关系的方法</h3><p>定期联系、表达感激、共同成长、处理分歧。</p>',
         '', '人际关系,沟通技巧,社交能力', 1, 18, 0, 0, 0, 1, '2025-09-04 16:20:00', '2025-09-04 16:20:00',
         '2025-09-04 16:20:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440005', 1, '睡眠质量与心理健康', '优质睡眠是维护心理健康的重要基础。',
         '<p>睡眠质量与心理健康密切相关。充足的睡眠不仅能恢复身体机能，还对情绪调节和认知功能有重要影响。</p><h3>睡眠对心理健康的影响</h3><ul><li>情绪稳定性</li><li>压力应对能力</li><li>记忆和学习能力</li><li>注意力集中</li></ul><h3>改善睡眠质量的方法</h3><ol><li>建立规律作息</li><li>创造良好睡眠环境</li><li>睡前放松活动</li><li>避免刺激性物质</li><li>适度运动</li></ol>',
         '', '睡眠健康,心理健康,生活习惯', 1, 27, 0, 0, 0, 1, '2025-09-05 11:45:00', '2025-09-05 11:45:00',
         '2025-09-05 11:45:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440006', 2, '正念练习入门指南',
         '正念练习是现代心理学推荐的有效减压和情绪调节方法。',
         '<p>正念是一种专注于当下体验的练习方法，能够帮助我们更好地管理情绪和压力。</p><h3>什么是正念</h3><p>正念是有意识地、不带评判地关注当下时刻的能力。</p><h3>正念的益处</h3><ul><li>减少焦虑和抑郁</li><li>提高专注力</li><li>改善情绪调节</li><li>增强自我觉察</li></ul><h3>基础正念练习</h3><ol><li>呼吸观察</li><li>身体扫描</li><li>行走冥想</li><li>日常正念</li></ol><h3>练习建议</h3><p>从每天5-10分钟开始，逐渐增加练习时间。</p>',
         '', '正念,冥想,减压,专注力', 1, 42, 0, 0, 0, 1, '2025-09-06 13:10:00', '2025-09-06 13:10:00', '2025-09-06 13:10:00');
-INSERT INTO `knowledge_article`
+INSERT INTO `knowledge_article` (`id`, `category_id`, `title`, `summary`, `content`, `cover_image`, `tags`, `author_id`, `read_count`, `like_count`, `comment_count`, `favorite_count`, `status`, `published_at`, `created_at`, `updated_at`)
 VALUES ('550e8400-e29b-41d4-a716-446655440007', 3, '学生心理压力应对策略',
         '帮助学生识别和应对学习生活中的各种心理压力。',
         '<p>学生时期面临着学业、人际、未来规划等多重压力。掌握有效的应对策略对学生心理健康至关重要。</p><h3>常见压力源</h3><ul><li>学业成绩压力</li><li>同伴关系</li><li>家庭期望</li><li>未来规划焦虑</li></ul><h3>应对策略</h3><ol><li>合理规划学习时间</li><li>培养兴趣爱好</li><li>建立支持网络</li><li>学会放松技巧</li><li>寻求专业帮助</li></ol><h3>预防措施</h3><p>建立健康的学习习惯和生活方式。</p>',
@@ -471,11 +485,11 @@ CREATE TABLE `knowledge_category`
     `category_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '分类名称',
     `category_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '分类代码',
     `description`   text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '分类描述',
-    `icon`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '分类图标(emoji或图片URL)',
     `sort_order`    int                                                           NULL DEFAULT 0 COMMENT '排序',
     `status`        tinyint                                                       NULL DEFAULT 1 COMMENT '状态 0:禁用 1:启用',
     `created_at`    datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`    datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `icon`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '分类图标(emoji或图片URL)',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `category_code` (`category_code` ASC) USING BTREE,
     INDEX `idx_parent_id` (`parent_id` ASC) USING BTREE,
@@ -489,13 +503,13 @@ CREATE TABLE `knowledge_category`
 -- ----------------------------
 -- Records of knowledge_category
 -- ----------------------------
-INSERT INTO `knowledge_category`
+INSERT INTO `knowledge_category` (`id`, `parent_id`, `category_name`, `category_code`, `description`, `sort_order`, `status`, `created_at`, `updated_at`)
 VALUES (1, 0, '心理健康基础', NULL, '心理健康基础知识和概念.', 30, 1, '2025-09-04 12:50:03', '2025-09-13 11:48:16');
-INSERT INTO `knowledge_category`
+INSERT INTO `knowledge_category` (`id`, `parent_id`, `category_name`, `category_code`, `description`, `sort_order`, `status`, `created_at`, `updated_at`)
 VALUES (2, 0, '情绪管理', NULL, '情绪识别、调节和管理技巧', 40, 1, '2025-09-04 12:50:03', '2025-09-13 11:48:16');
-INSERT INTO `knowledge_category`
+INSERT INTO `knowledge_category` (`id`, `parent_id`, `category_name`, `category_code`, `description`, `sort_order`, `status`, `created_at`, `updated_at`)
 VALUES (3, 0, '压力缓解', NULL, '压力来源分析和缓解方法', 20, 1, '2025-09-04 12:50:03', '2025-09-13 11:48:16');
-INSERT INTO `knowledge_category`
+INSERT INTO `knowledge_category` (`id`, `parent_id`, `category_name`, `category_code`, `description`, `sort_order`, `status`, `created_at`, `updated_at`)
 VALUES (4, 0, '人际关系', NULL, '人际交往和关系处理', 10, 1, '2025-09-04 12:50:03', '2025-09-13 11:48:16');
 
 -- ----------------------------
@@ -581,7 +595,7 @@ CREATE TABLE `user`
     `avatar`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '头像URL',
     `gender`     tinyint                                                       NULL DEFAULT NULL COMMENT '性别 0:未知 1:男 2:女',
     `birthday`   date                                                          NULL DEFAULT NULL COMMENT '生日',
-    `user_type`  tinyint                                                       NULL DEFAULT 1 COMMENT '用户类型 1:普通用户 2:管理员 3:咨询师',
+    `user_type`  tinyint                                                       NULL DEFAULT 1 COMMENT '用户类型 1:普通用户 2:管理员 3:心理咨询师',
     `status`     tinyint                                                       NULL DEFAULT 1 COMMENT '状态 0:禁用 1:正常',
     `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -655,13 +669,12 @@ CREATE TABLE `user_browse_history`
 (
     `id`               bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '历史记录ID',
     `user_id`          bigint                                                       NOT NULL COMMENT '用户ID',
-    `article_id`      varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
-    `duration_seconds` int                                                          NOT NULL DEFAULT 0 COMMENT '累计阅读时长(秒)',
+    `article_id`       varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
     `created_at`       datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近浏览时间',
+    `duration_seconds` int                                                          NOT NULL DEFAULT 0 COMMENT '累计阅读时长(秒)',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `user_article_history_unique` (`user_id` ASC, `article_id` ASC) USING BTREE,
     INDEX `idx_user_id` (`user_id` ASC) USING BTREE,
-    INDEX `idx_article_created` (`article_id` ASC, `created_at` ASC) USING BTREE,
     CONSTRAINT `user_browse_history_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT `user_browse_history_ibfk_2` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB
@@ -676,10 +689,10 @@ CREATE TABLE `user_browse_history`
 DROP TABLE IF EXISTS `article_like`;
 CREATE TABLE `article_like`
 (
-    `id`         bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '点赞ID',
-    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
-    `user_id`    bigint                                                       NOT NULL COMMENT '用户ID',
-    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT,
+    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+    `user_id`    bigint                                                       NOT NULL,
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `uk_user_article` (`user_id` ASC, `article_id` ASC) USING BTREE,
     INDEX `idx_article` (`article_id` ASC) USING BTREE,
@@ -696,12 +709,12 @@ CREATE TABLE `article_like`
 DROP TABLE IF EXISTS `article_comment`;
 CREATE TABLE `article_comment`
 (
-    `id`         bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
-    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '文章ID',
-    `user_id`    bigint                                                        NOT NULL COMMENT '用户ID',
-    `content`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+    `id`         bigint                                                        NOT NULL AUTO_INCREMENT,
+    `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL,
+    `user_id`    bigint                                                        NOT NULL,
+    `content`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
     `status`     tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0:待审核 1:已通过 2:已拒绝',
-    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_article_status` (`article_id` ASC, `status` ASC, `created_at` ASC) USING BTREE,
     CONSTRAINT `fk_ac_article` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
@@ -744,25 +757,29 @@ CREATE TABLE `assessment_scale`
 -- ----------------------------
 CREATE TABLE `assessment_record`
 (
-    `id`                bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '记录ID',
-    `user_id`           bigint                                                       NOT NULL COMMENT '用户ID',
-    `scale_id`          bigint                                                       NOT NULL COMMENT '量表ID',
-    `status`            varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态：IN_PROGRESS-进行中/COMPLETED-已完成',
-    `current_index`     int                                                          NOT NULL DEFAULT 0 COMMENT '当前答到第几题(从0开始)',
-    `answers`           json                                                         NULL COMMENT '答案数组 [{"questionIndex":0,"score":2}]',
-    `total_score`       decimal(6,2)                                                 NULL DEFAULT NULL COMMENT '总分',
-    `level`             varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '等级 NORMAL/MILD/MODERATE/SEVERE',
-    `dimension_scores`  json                                                         NULL COMMENT '维度得分 {"维度名":得分}',
-    `report`            json                                                         NULL COMMENT '报告内容（解读/建议/风险提示）',
-    `risk_flag`         tinyint                                                      NOT NULL DEFAULT 0 COMMENT '风险标记 1-需关注',
-    `started_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始作答时间',
-    `completed_at`      datetime                                                     NULL DEFAULT NULL COMMENT '完成时间',
-    `created_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`        datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `id`                  bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '记录ID',
+    `user_id`             bigint                                                        NOT NULL COMMENT '用户ID',
+    `scale_id`            bigint                                                        NOT NULL COMMENT '量表ID',
+    `status`              varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '状态：IN_PROGRESS-进行中/COMPLETED-已完成',
+    `current_index`       int                                                           NOT NULL DEFAULT 0 COMMENT '当前答到第几题(从0开始)',
+    `answers`             json                                                          NULL COMMENT '答案数组 [{"questionIndex":0,"score":2}]',
+    `total_score`         decimal(6,2)                                                  NULL DEFAULT NULL COMMENT '总分',
+    `level`               varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '等级 NORMAL/MILD/MODERATE/SEVERE',
+    `dimension_scores`    json                                                          NULL COMMENT '维度得分 {"维度名":得分}',
+    `report`              json                                                          NULL COMMENT '报告内容（解读/建议/风险提示）',
+    `risk_flag`           tinyint                                                       NOT NULL DEFAULT 0 COMMENT '风险标记 1-需关注',
+    `started_at`          datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始作答时间',
+    `completed_at`        datetime                                                      NULL DEFAULT NULL COMMENT '完成时间',
+    `created_at`          datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`          datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `intervention_status` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '干预状态 0-未处理 1-已干预 2-已处理',
+    `intervention_note`   varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '干预备注',
+    `intervened_at`       datetime                                                      NULL DEFAULT NULL COMMENT '干预时间',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_user_scale` (`user_id` ASC, `scale_id` ASC) USING BTREE,
     INDEX `idx_user_created` (`user_id` ASC, `created_at` ASC) USING BTREE,
     INDEX `idx_status_risk` (`status` ASC, `risk_flag` ASC) USING BTREE,
+    INDEX `idx_level_status` (`level` ASC, `intervention_status` ASC) USING BTREE,
     CONSTRAINT `fk_ar_scale` FOREIGN KEY (`scale_id`) REFERENCES `assessment_scale` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT `fk_ar_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB
@@ -850,18 +867,24 @@ DROP TABLE IF EXISTS `course`;
 
 CREATE TABLE `course`
 (
-    `id`             bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '课程ID',
-    `title`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '课程标题',
-    `category`       varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '类别：MEDITATION/SLEEP/EMOTION/CBT/INTERPERSONAL',
-    `description`    text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '课程介绍',
-    `cover_url`      varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图',
-    `total_duration` int                                                           NOT NULL DEFAULT 0 COMMENT '总时长(秒)',
-    `learn_count`    int                                                           NOT NULL DEFAULT 0 COMMENT '学习人数',
-    `status`         tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:上架 0:下架',
-    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `id`              bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '课程ID',
+    `title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '课程标题',
+    `category`        varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '类别：MEDITATION/SLEEP/EMOTION/CBT/INTERPERSONAL',
+    `description`     text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '课程介绍',
+    `cover_url`       varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '封面图',
+    `total_duration`  int                                                           NOT NULL DEFAULT 0 COMMENT '总时长(秒)',
+    `learn_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '学习人数',
+    `status`          tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:上架 0:下架',
+    `created_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `lecturer`        varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '讲师姓名',
+    `target_audience` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '适合人群',
+    `reject_reason`   varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '审核驳回原因',
+    `reviewed_at`     datetime                                                      NULL DEFAULT NULL COMMENT '审核时间',
+    `published_at`    datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
     PRIMARY KEY (`id`) USING BTREE,
-    INDEX `idx_category_status` (`category` ASC, `status` ASC) USING BTREE
+    INDEX `idx_category_status` (`category` ASC, `status` ASC) USING BTREE,
+    INDEX `idx_status_created` (`status` ASC, `created_at` DESC) USING BTREE
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 1
   CHARACTER SET = utf8mb4
@@ -877,9 +900,10 @@ CREATE TABLE `course_chapter`
     `course_id`  bigint                                                        NOT NULL COMMENT '课程ID',
     `title`      varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '章节标题',
     `audio_url`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '音频地址(静态文件或OSS)',
+    `video_url`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '视频地址(可选)',
     `duration`   int                                                           NOT NULL DEFAULT 0 COMMENT '时长(秒)',
-    `intro`      text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          NULL COMMENT '章节图文介绍',
-    `sort_order` int                                                          NOT NULL DEFAULT 0 COMMENT '排序',
+    `intro`      text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '章节图文介绍',
+    `sort_order` int                                                           NOT NULL DEFAULT 0 COMMENT '排序',
     `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_course_order` (`course_id` ASC, `sort_order` ASC) USING BTREE,
@@ -939,24 +963,24 @@ CREATE TABLE `course_progress`
 DROP TABLE IF EXISTS `community_post`;
 CREATE TABLE `community_post`
 (
-    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '帖子ID',
-    `board`        varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '板块：TREES/ACADEMIC/RELATIONSHIP/SLEEP/RECOVERY/HELP',
-    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '标题',
-    `content`      longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '正文(富文本HTML，已白名单清洗)',
-    `images`       json                                                          NULL COMMENT '图片URL数组',
-    `author_id`    bigint                                                        NOT NULL COMMENT '作者ID',
-    `is_anonymous` tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
-    `is_top`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-置顶（置顶不设时长，如需到期自动取消可加 top_expire_at + 定时任务）',
-    `is_featured`  tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-加精',
-    `reject_reason` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '审核驳回原因（仅 REJECTED 状态有值）',
-    `status`       tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:举报待审 3:已下架 4:待审核 5:已驳回',
-    `like_count`    int                                                          NOT NULL DEFAULT 0 COMMENT '点赞数',
-    `comment_count` int                                                          NOT NULL DEFAULT 0 COMMENT '评论数',
-    `favorite_count` int                                                         NOT NULL DEFAULT 0 COMMENT '收藏数',
-    `view_count`   int                                                           NOT NULL DEFAULT 0 COMMENT '浏览数',
-    `is_crisis`    tinyint                                                       NOT NULL DEFAULT 0 COMMENT '危机内容标记 0:否 1:是',
-    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `id`             bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '帖子ID',
+    `board`          varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '板块：TREES/ACADEMIC/RELATIONSHIP/SLEEP/RECOVERY/HELP',
+    `title`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '标题',
+    `content`        longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '正文(富文本HTML，已白名单清洗)',
+    `images`         json                                                          NULL COMMENT '图片URL数组',
+    `author_id`      bigint                                                        NOT NULL COMMENT '作者ID',
+    `is_anonymous`   tinyint                                                       NOT NULL DEFAULT 0 COMMENT '是否匿名 0:否 1:是',
+    `status`         tinyint                                                       NOT NULL DEFAULT 0 COMMENT '状态 0:正常 1:已删除 2:举报待审 3:已下架',
+    `like_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '点赞数',
+    `comment_count`  int                                                           NOT NULL DEFAULT 0 COMMENT '评论数',
+    `favorite_count` int                                                           NOT NULL DEFAULT 0 COMMENT '收藏数',
+    `view_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '浏览数',
+    `is_crisis`      tinyint                                                       NOT NULL DEFAULT 0 COMMENT '危机内容标记 0:否 1:是',
+    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `is_top`         tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-置顶（置顶不设时长，如需到期自动取消可加 top_expire_at + 定时任务）',
+    `is_featured`    tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-否 1-加精',
+    `reject_reason`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '审核驳回原因（仅 REJECTED 状态有值）',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_board_created` (`board` ASC, `created_at` DESC) USING BTREE,
     INDEX `idx_author` (`author_id` ASC) USING BTREE,
@@ -1129,11 +1153,13 @@ CREATE TABLE `sensitive_word`
 -- ----------------------------
 CREATE TABLE `course_comment`
 (
-    `id`         bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
-    `course_id`  bigint                                                        NOT NULL COMMENT '课程ID',
-    `user_id`    bigint                                                        NOT NULL COMMENT '用户ID',
-    `content`    varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
-    `created_at` datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    `id`            bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+    `course_id`     bigint                                                        NOT NULL COMMENT '课程ID',
+    `user_id`       bigint                                                        NOT NULL COMMENT '用户ID',
+    `content`       varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+    `created_at`    datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评论时间',
+    `reply_content` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '管理员回复',
+    `reply_at`      datetime                                                      NULL DEFAULT NULL COMMENT '回复时间',
     PRIMARY KEY (`id`) USING BTREE,
     INDEX `idx_course_created` (`course_id` ASC, `created_at` ASC) USING BTREE,
     CONSTRAINT `fk_cc_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
@@ -1196,15 +1222,20 @@ CREATE TABLE `notification`
 DROP TABLE IF EXISTS `announcement`;
 CREATE TABLE `announcement`
 (
-    `id`           bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '公告ID',
-    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标题',
-    `content`      longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '公告内容(富文本HTML，已白名单清洗)',
-    `status`       tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:发布中 0:已下架',
-    `published_at` datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
-    `created_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`   datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `id`              bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '公告ID',
+    `title`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标题',
+    `content`         longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci     NOT NULL COMMENT '公告内容(富文本HTML，已白名单清洗)',
+    `type`            varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL DEFAULT 'SYSTEM' COMMENT 'SYSTEM-系统公告 ACTIVITY-活动通知 TIP-温馨提示',
+    `target_type`     varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL DEFAULT 'ALL' COMMENT 'ALL-全体 USERS-指定用户',
+    `target_user_ids` json                                                          NULL COMMENT '指定用户ID数组(JSON)',
+    `publish_at`      datetime                                                      NULL DEFAULT NULL COMMENT '定时发布时间(空=非定时)',
+    `status`          tinyint                                                       NOT NULL DEFAULT 1 COMMENT '状态 1:发布中 0:已下架',
+    `published_at`    datetime                                                      NULL DEFAULT NULL COMMENT '发布时间',
+    `created_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`      datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
-    INDEX `idx_status_published` (`status` ASC, `published_at` DESC) USING BTREE
+    INDEX `idx_status_published` (`status` ASC, `published_at` DESC) USING BTREE,
+    INDEX `idx_status_publish` (`status` ASC, `publish_at` ASC) USING BTREE
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 1
   CHARACTER SET = utf8mb4
@@ -1272,30 +1303,31 @@ DROP TABLE IF EXISTS `consultant`;
 -- ----------------------------
 CREATE TABLE `consultant`
 (
-    `id`                bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '咨询师ID',
-    `user_id`           bigint                                                        NULL COMMENT '关联登录账号(user_type=3)',
-    `name`              varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '姓名',
-    `avatar`            varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '头像',
-    `title`             varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '职称：心理咨询师/心理治疗师/专家',
-    `specialties`       varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '擅长领域，逗号分隔：情绪管理,人际关系,学业压力,睡眠问题',
-    `years_of_practice` int                                                           NOT NULL DEFAULT 0 COMMENT '从业年限',
-    `intro`             text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci        NULL COMMENT '个人简介',
-    `rating`            decimal(3, 1)                                                 NOT NULL DEFAULT 0.0 COMMENT '平均评分(冗余)',
-    `review_count`      int                                                           NOT NULL DEFAULT 0 COMMENT '评价次数(冗余)',
-    `consult_count`     int                                                           NOT NULL DEFAULT 0 COMMENT '咨询次数(冗余)',
-    `status`            tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-待审核 1-正常 2-禁用',
-    `qualification_images` json                                                      NULL COMMENT '资质证明图片URL数组(JSON)',
-    `reject_reason`     varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '驳回原因(非空=已驳回待修改)',
-    `reviewed_at`       datetime                                                      NULL DEFAULT NULL COMMENT '最近审核时间',
-    `joined_at`         datetime                                                      NULL DEFAULT NULL COMMENT '入驻时间(审核通过时间)',
-    `sort_weight`       int                                                           NOT NULL DEFAULT 0 COMMENT '排序权重(越大越靠前)',
-    `price`             decimal(10, 2)                                                NULL DEFAULT NULL COMMENT '咨询价格(元/小时，付费预留)',
-    `booking_window_days` int                                                          NOT NULL DEFAULT 14 COMMENT '可预约天数(用户端可约未来N天)',
-    `cancel_hours_before` int                                                          NOT NULL DEFAULT 2 COMMENT '用户取消时限(开始前N小时,0=不限)',
-    `created_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`        datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `id`                   bigint                                                        NOT NULL AUTO_INCREMENT COMMENT '咨询师ID',
+    `user_id`              bigint                                                        NULL COMMENT '关联登录账号(user_type=3)',
+    `name`                 varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '姓名',
+    `avatar`               varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '头像',
+    `title`                varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NULL DEFAULT NULL COMMENT '职称：心理咨询师/心理治疗师/专家',
+    `specialties`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '擅长领域，逗号分隔：情绪管理,人际关系,学业压力,睡眠问题',
+    `years_of_practice`    int                                                           NOT NULL DEFAULT 0 COMMENT '从业年限',
+    `intro`                text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci         NULL COMMENT '个人简介',
+    `rating`               decimal(3, 1)                                                 NOT NULL DEFAULT 0.0 COMMENT '平均评分(冗余)',
+    `review_count`         int                                                           NOT NULL DEFAULT 0 COMMENT '评价次数(冗余)',
+    `consult_count`        int                                                           NOT NULL DEFAULT 0 COMMENT '咨询次数(冗余)',
+    `status`               tinyint                                                       NOT NULL DEFAULT 0 COMMENT '0-待审核 1-正常 2-禁用',
+    `created_at`           datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`           datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `qualification_images` json                                                          NULL COMMENT '资质证明图片URL数组(JSON)',
+    `reject_reason`        varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '驳回原因(非空=已驳回待修改)',
+    `reviewed_at`          datetime                                                      NULL DEFAULT NULL COMMENT '最近审核时间',
+    `joined_at`            datetime                                                      NULL DEFAULT NULL COMMENT '入驻时间(审核通过时间)',
+    `sort_weight`          int                                                           NOT NULL DEFAULT 0 COMMENT '排序权重(越大越靠前)',
+    `price`                decimal(10, 2)                                                NULL DEFAULT NULL COMMENT '咨询价格(元/小时，付费预留)',
+    `booking_window_days`  int                                                           NOT NULL DEFAULT 14 COMMENT '可预约天数(用户端可约未来N天)',
+    `cancel_hours_before`  int                                                           NOT NULL DEFAULT 2 COMMENT '用户取消时限(开始前N小时,0=不限)',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `uk_user_id` (`user_id` ASC) USING BTREE,
+    INDEX `idx_status` (`status` ASC) USING BTREE,
     INDEX `idx_status_created` (`status` ASC, `created_at` ASC) USING BTREE
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 1
@@ -1392,9 +1424,9 @@ CREATE TABLE `consultant_review`
     `user_id`        bigint                                                        NOT NULL COMMENT '评价用户ID',
     `rating`         tinyint                                                       NOT NULL COMMENT '评分1-5',
     `content`        varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '评价内容',
+    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `reply_content`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '管理员/咨询师回复',
     `reply_at`       datetime                                                      NULL DEFAULT NULL COMMENT '回复时间',
-    `created_at`     datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE INDEX `uk_appointment` (`appointment_id` ASC) USING BTREE,
     INDEX `idx_consultant_created` (`consultant_id` ASC, `created_at` ASC) USING BTREE,
@@ -1512,6 +1544,261 @@ CREATE TABLE IF NOT EXISTS `consultation_record`
   CHARACTER SET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT = '咨询记录(仅咨询师本人与管理员可见)'
   ROW_FORMAT = DYNAMIC;
+
+-- ============================================================
+-- 补充表：以下 11 张表为运行时/配置类表，无 FK 依赖，建在末尾
+-- ============================================================
+
+-- ----------------------------
+-- Table structure for sys_config 系统配置KV
+-- ----------------------------
+DROP TABLE IF EXISTS `sys_config`;
+CREATE TABLE `sys_config`
+(
+    `id`           bigint                                                       NOT NULL AUTO_INCREMENT,
+    `config_key`  varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `config_value` varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `group_name`  varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'BASIC/REGISTER/CONTENT/CRISIS',
+    `description` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `updated_at`  datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_key` (`config_key`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 13
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统配置KV';
+
+INSERT INTO `sys_config` (`id`, `config_key`, `config_value`, `group_name`, `description`) VALUES
+(1, 'SYSTEM_NAME', '心理健康AI助手', 'BASIC', '系统名称'),
+(2, 'SYSTEM_LOGO', '', 'BASIC', '系统 Logo 图片 URL'),
+(3, 'ICP_NUMBER', '', 'BASIC', 'ICP 备案号'),
+(4, 'CUSTOMER_SERVICE', '', 'BASIC', '客服联系方式'),
+(5, 'SYSTEM_INTRO', '', 'BASIC', '系统简介'),
+(6, 'REGISTER_ENABLED', 'true', 'REGISTER', '开放注册（true/false）'),
+(7, 'REGISTER_REVIEW', 'false', 'REGISTER', '注册需审核（true/false）'),
+(8, 'DEFAULT_USER_ROLE', '1', 'REGISTER', '注册默认角色（1-普通用户 2-管理员）'),
+(9, 'COMMUNITY_POST_REVIEW', 'false', 'CONTENT', '社区发帖需审核（true/false）'),
+(10, 'COMMUNITY_COMMENT_REVIEW', 'false', 'CONTENT', '社区评论需审核（true/false）'),
+(11, 'HOTLINE_NUMBERS', '[{"name":"全国心理援助热线","phone":"12356","note":"2025 年上线的全国统一心理援助短号，24 小时接听"},{"name":"北京心理危机研究与干预中心","phone":"010-82951332","note":"国内最早的自杀研究与危机干预专业机构之一"},{"name":"希望24热线","phone":"400-161-9995","note":"24 小时心理危机干预热线，全国接入"}]', 'CRISIS', '危机干预热线 JSON：[{name, phone, note?}]'),
+(12, 'CRISIS_PROMPT_TEXT', '如果你正在伤害自己，或有这样的想法，请先拨打下面任一条热线，有人正在等你。', 'CRISIS', '危机干预提示文案');
+
+-- ----------------------------
+-- Table structure for crisis_word 危机词库(表驱动,安全底线:启用词<5时删除/停用被拒绝)
+-- ----------------------------
+DROP TABLE IF EXISTS `crisis_word`;
+CREATE TABLE `crisis_word`
+(
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT,
+    `word`       varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `status`     tinyint                                                      NOT NULL DEFAULT 1 COMMENT '0-停用 1-启用',
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_word` (`word`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 21
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '危机词库(表驱动,安全底线:启用词<5时删除/停用被拒绝)';
+
+INSERT INTO `crisis_word` (`id`, `word`, `status`) VALUES
+(1, '自杀', 1), (2, '自残', 1), (3, '轻生', 1), (4, '想死', 1), (5, '不想活', 1),
+(6, '活不下去', 1), (7, '结束生命', 1), (8, '割腕', 1), (9, '跳楼', 1), (10, '自缢', 1),
+(11, '寻死', 1), (12, '了此一生', 1), (13, '了结自己', 1), (14, '伤害自己', 1), (15, '离开这个世界', 1),
+(16, '不想再醒来', 1), (17, '一了百了', 1), (18, '吞安眠药', 1), (19, '烧炭', 1), (20, '跳河', 1);
+
+-- ----------------------------
+-- Table structure for ai_config AI配置KV(模型参数/过滤开关/单价)
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_config`;
+CREATE TABLE `ai_config`
+(
+    `id`           bigint                                                       NOT NULL AUTO_INCREMENT,
+    `config_key`  varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `config_value` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `description` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `updated_at`  datetime                                                      NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_key` (`config_key`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 9
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI 配置KV(模型参数/过滤开关/单价)';
+
+INSERT INTO `ai_config` (`id`, `config_key`, `config_value`, `description`) VALUES
+(1, 'MODEL', 'deepseek-v3', '模型名(百炼兼容模式)'),
+(2, 'TEMPERATURE', '0.7', '温度 0-2'),
+(3, 'MAX_TOKENS', '2048', '单次最大输出 token 1-8192'),
+(4, 'TOP_P', '0.9', '核采样 0-1'),
+(5, 'INPUT_PRICE', '0.5', '输入单价(元/百万token)'),
+(6, 'OUTPUT_PRICE', '2.0', '输出单价(元/百万token)'),
+(7, 'FILTER_AI_REPLY', 'OFF', 'AI回复敏感词过滤开关 ON/OFF'),
+(8, 'FILTER_ACTION', 'LOG_ONLY', '过滤动作 BLOCK/REPLACE/LOG_ONLY');
+
+-- ----------------------------
+-- Table structure for admin_operation_log 管理员操作日志(AOP异步写入,敏感参数脱敏)
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_operation_log`;
+CREATE TABLE `admin_operation_log`
+(
+    `id`             bigint                                                       NOT NULL AUTO_INCREMENT,
+    `operator_id`    bigint                                                       NULL DEFAULT NULL,
+    `operator_name`  varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `action_type`    varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'CREATE/UPDATE/DELETE/LOGIN/LOGOUT',
+    `action_content` varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '方法名+参数摘要(敏感字段已脱敏)',
+    `ip`             varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `created_at`     datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_created` (`created_at`) USING BTREE,
+    KEY `idx_operator_created` (`operator_id`, `created_at`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '管理员操作日志(AOP异步写入,敏感参数脱敏)';
+
+-- ----------------------------
+-- Table structure for ai_block_record AI回复拦截记录
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_block_record`;
+CREATE TABLE `ai_block_record`
+(
+    `id`             bigint                                                       NOT NULL AUTO_INCREMENT,
+    `session_id`     bigint                                                       NULL DEFAULT NULL COMMENT '会话ID(可空)',
+    `trigger_word`   varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '命中词',
+    `content_summary` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '内容摘要(≤200字,不存全文)',
+    `action`         varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'BLOCK/REPLACE/LOG_ONLY',
+    `created_at`     datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_created` (`created_at`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI 回复拦截记录';
+
+-- ----------------------------
+-- Table structure for ai_call_log AI调用日志
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_call_log`;
+CREATE TABLE `ai_call_log`
+(
+    `id`           bigint                                                       NOT NULL AUTO_INCREMENT,
+    `purpose`      varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '调用用途(STREAM_CHAT/EMOTION_ANALYSIS/SUMMARY/AI_TEST)',
+    `model`        varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `input_tokens` int                                                          NULL DEFAULT NULL COMMENT '尽力提取,无则null',
+    `output_tokens` int                                                         NULL DEFAULT NULL,
+    `duration_ms`  int                                                          NOT NULL,
+    `success`      tinyint                                                      NOT NULL DEFAULT 1,
+    `error_msg`    varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+    `created_at`   datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_created` (`created_at`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI 调用日志';
+
+-- ----------------------------
+-- Table structure for ai_prompt_template AI提示词模板(多版本)
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_prompt_template`;
+CREATE TABLE `ai_prompt_template`
+(
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT,
+    `prompt_key` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `name`       varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '模板名称',
+    `content`    text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci        NOT NULL,
+    `version`    int                                                          NOT NULL COMMENT '版本号(同key自增)',
+    `status`     tinyint                                                      NOT NULL DEFAULT 0 COMMENT '0-历史/草稿 1-生效(同key仅一行)',
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_key_version` (`prompt_key`, `version`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = 'AI 提示词模板(多版本)';
+
+-- ----------------------------
+-- Table structure for ai_quality_sample 对话质量抽检
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_quality_sample`;
+CREATE TABLE `ai_quality_sample`
+(
+    `id`            bigint   NOT NULL AUTO_INCREMENT,
+    `session_id`    bigint   NOT NULL,
+    `status`        tinyint  NOT NULL DEFAULT 0 COMMENT '0-待标注 1-好 2-一般 3-坏',
+    `score`         tinyint  NULL DEFAULT NULL COMMENT '评分1-5',
+    `note`          varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '标注备注',
+    `annotator_id`  bigint   NULL DEFAULT NULL COMMENT '标注管理员ID',
+    `annotated_at`  datetime NULL DEFAULT NULL,
+    `created_at`    datetime NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_status` (`status`) USING BTREE,
+    KEY `idx_session` (`session_id`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '对话质量抽检';
+
+-- ----------------------------
+-- Table structure for assessment_question 通用题目库(素材池)
+-- ----------------------------
+DROP TABLE IF EXISTS `assessment_question`;
+CREATE TABLE `assessment_question`
+(
+    `id`            bigint                                                       NOT NULL AUTO_INCREMENT COMMENT '题目ID',
+    `stem`          varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '题干',
+    `type`          varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci  NOT NULL COMMENT '题型：SINGLE-单选 MULTIPLE-多选 SCALE-量表题',
+    `options`       json                                                         NOT NULL COMMENT '选项JSON [{label,text,score}]',
+    `dimension_tag` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '默认维度标签(可选)',
+    `category`      varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '题目库分类',
+    `created_at`    datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`    datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    KEY `idx_type` (`type`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci COMMENT = '通用题目库(素材池)';
+
+-- ----------------------------
+-- Table structure for banner 首页轮播图
+-- ----------------------------
+DROP TABLE IF EXISTS `banner`;
+CREATE TABLE `banner`
+(
+    `id`         bigint                                                       NOT NULL AUTO_INCREMENT,
+    `title`      varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '标题',
+    `image_url`  varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '图片地址(OSS)',
+    `link_url`   varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '跳转链接(仅http/https)',
+    `sort_order` int                                                          NOT NULL DEFAULT 0 COMMENT '排序(小在前)',
+    `status`     tinyint                                                      NOT NULL DEFAULT 1 COMMENT '0-停用 1-启用',
+    `created_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 2
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '首页轮播图';
+
+INSERT INTO `banner` (`id`, `title`, `image_url`, `link_url`, `sort_order`, `status`) VALUES
+(1, '测试轮播图', 'https://mental-health-ai.oss-cn-beijing.aliyuncs.com/bussiness/BANNER/202609/1a92f123e8a64766beefec49fc1c585d.jpg', 'https://www.baidu.com', 0, 0);
+
+-- ----------------------------
+-- Table structure for notification_push 消息推送批次记录
+-- ----------------------------
+DROP TABLE IF EXISTS `notification_push`;
+CREATE TABLE `notification_push`
+(
+    `id`           bigint                                                       NOT NULL AUTO_INCREMENT,
+    `type`         varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '推送类型(通知类型枚举)',
+    `title`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `content`      varchar(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+    `target_type`  varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'ALL' COMMENT 'ALL-全体 USERS-指定用户',
+    `target_count` int                                                          NOT NULL COMMENT '目标用户数',
+    `created_at`   datetime                                                     NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 1
+  CHARACTER SET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT = '消息推送批次记录';
 
 -- ----------------------------
 -- 用户管理模块增量字段：最后登录时间 + 列表检索复合索引

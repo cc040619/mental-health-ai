@@ -35,8 +35,8 @@ public class FileService {
     /** 允许上传的图片与常见文档类型 */
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp", "bmp", "pdf", "txt", "doc", "docx", "xls", "xlsx");
 
-    /** 最大文件大小：10MB */
-    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024L;
+    /** 最大文件大小：5MB */
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024L;
 
     /** 扩展名与文件类型标识的映射 */
     private static final Map<String, String> FILE_TYPE_MAP = Map.ofEntries(

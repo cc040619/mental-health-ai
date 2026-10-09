@@ -1,8 +1,13 @@
-﻿spring:
+spring:
   application:
     name: backend
   profiles:
     active: dev  # 本地开发加载 application-dev.yml（已 gitignore，不上传）
+  # 文件上传限制：单文件 5MB（与部署环境 Nginx 的 client_max_body_size 配合）
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 50MB
   datasource:
     url: jdbc:mysql://localhost:3306/mental_health_assistant?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME}
@@ -35,12 +40,25 @@
     openai:
       chat:
         options:
-          model: deepseek-v3
+          model: deepseek-v4.1-flash
           tool-calling:
             enabled: true
         completions-path: /v1/chat/completions
       api-key: ${DASHSCOPE_API_KEY:sk-your-api-key}  # api-key，阿里云百炼平台（请勿提交真实密钥）
       base-url: https://dashscope.aliyuncs.com/compatible-mode
+      # Embedding：RAG 语义检索用（DashScope text-embedding-v4，兼容模式 /v1/embeddings）
+      embedding:
+        options:
+          model: text-embedding-v4
+    # MCP Server 出口：只暴露只读检索工具，外部客户端用 MCP_API_KEY 访问（见文件末尾 mcp 配置段）
+    mcp:
+      server:
+        enabled: true
+        name: mental-health-assistant
+        version: 1.0.0
+        # Streamable HTTP（单一 /mcp 端点，每个请求都带 Authorization）；改 SSE 时鉴权路径已一并覆盖
+        protocol: STREAMABLE
+        instructions: 本站只提供只读检索：心理健康知识库已发布文章、社区已发布帖子，返回标题、摘要与站内链接。
 
   # 服务器配置
 server:
@@ -62,3 +80,13 @@ aliyun:
     region: ${OSS_REGION:cn-beijing}
     access-key-id: ${OSS_ACCESS_KEY_ID:your-access-key-id}
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:your-access-key-secret}  # token前缀
+
+# RAG 向量索引：索引文件不存在时向量检索自动降级为关键词检索；
+# 建索引由管理员调用 POST /api/rag/reindex（会调用 embedding 接口产生费用，故不自动重建）
+rag:
+  index-file: ${RAG_INDEX_FILE:./data/rag-index.json}
+
+# MCP 出口：API Key 只从环境变量注入（禁止写入仓库/数据库）；为空时拒绝全部 MCP 请求
+mcp:
+  api-key: ${MCP_API_KEY:}
+  rate-limit-per-minute: ${MCP_RATE_LIMIT_PER_MINUTE:60}

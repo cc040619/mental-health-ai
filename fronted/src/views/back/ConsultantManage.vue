@@ -694,8 +694,8 @@ const beforeImageUpload = (file) => {
         ElMessage.error('只能上传图片文件')
         return false
     }
-    if (file.size / 1024 / 1024 > 10) {
-        ElMessage.error('图片大小不能超过 10MB')
+    if (file.size / 1024 / 1024 > 5) {
+        ElMessage.error('图片大小不能超过 5MB')
         return false
     }
     return true

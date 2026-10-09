@@ -1,5 +1,6 @@
 package com.cc.AIservice;
 
+import com.cc.AIservice.rag.RagTools;
 import com.cc.dto.request.ConsultationSessionCreateDTO;
 import com.cc.dto.response.ConsultationMessageResponseDTO;
 import com.cc.entity.ConsultationSession;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PsychologicalSupportService {
@@ -57,6 +59,9 @@ public class PsychologicalSupportService {
 
     @Resource
     private AiConfigService aiConfigService;
+
+    @Resource
+    private RagTools ragTools;
 
     public StructOutPut.StreamChatSession startSession(Long userId, ConsultationSessionCreateDTO createDTO) {
         // 创建数据库会话记录
@@ -138,6 +143,9 @@ public class PsychologicalSupportService {
             chatClient.prompt(prompt)
                     // per-request 模型参数覆盖（DB 配置 60s 缓存），改配置后下一条对话生效
                     .options(aiConfigService.buildChatOptions())
+                    // 站内资料检索工具：身份经 toolContext 显式传入（工具在响应式线程执行，取不到请求线程上下文）
+                    .tools(ragTools)
+                    .toolContext(Map.of(RagTools.CTX_USER_ID, userId))
                     .user(userMessage)
                     .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
                     .stream()

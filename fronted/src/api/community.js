@@ -1,4 +1,5 @@
 import service from '@/utils/request'
+import { uuid } from '@/utils/uuid'
 
 // ===== 用户端：社区论坛 =====
 
@@ -77,7 +78,7 @@ export const uploadCommunityImage = (file) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('businessType', 'COMMUNITY')
-    formData.append('businessId', crypto.randomUUID())
+    formData.append('businessId', uuid())
     formData.append('businessField', 'image')
     return service.post('/file/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }

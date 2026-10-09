@@ -110,6 +110,18 @@
             <artifactId>spring-ai-autoconfigure-model-openai</artifactId>
         </dependency>
 
+        <!-- 向量存储：SimpleVectorStore，RAG 语义检索（内存索引 + 本地 JSON 持久化） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-vector-store</artifactId>
+        </dependency>
+
+        <!-- MCP Server（WebMVC 传输）：把站内检索工具暴露给外部 MCP 客户端 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
         <!-- AOP：AI 调用埋点等切面 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

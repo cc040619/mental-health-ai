@@ -735,7 +735,6 @@ public class CommunityService {
      * 关键词搜索（标题前缀 + 正文 LIKE），不缓存；关键词 ≤50 字
      */
     public Map<String, Object> search(String keyword, Long page, Long size) {
-        Long userId = CurrentUserUtils.getCurrentUserId();
         boolean showReal = CurrentUserUtils.isAdmin();
         if (keyword == null || keyword.isBlank()) {
             throw new BusinessException("请输入搜索关键词");
@@ -748,9 +747,56 @@ public class CommunityService {
         long sz = (size != null && size > 0) ? Math.min(size, 20L) : 10L;
 
         Page<PostResponseDTO> p = new Page<>(cur, sz);
-        IPage<PostResponseDTO> result = postMapper.searchPosts(p, kw, userId, showReal ? 1 : 0);
+        IPage<PostResponseDTO> result = postMapper.searchPosts(p, kw, CurrentUserUtils.getCurrentUserId(), showReal ? 1 : 0);
         polishList(result.getRecords());
         return Map.of("records", result.getRecords(), "total", result.getTotal());
+    }
+
+    /**
+     * 全量正常帖（RAG 建索引用）：排除危机帖，不落作者信息
+     *
+     * @param limit 上限条数
+     */
+    public List<CommunityPost> listAllNormalForIndex(int limit) {
+        return postMapper.selectList(normalPostQuery()
+                .orderByDesc(CommunityPost::getCreatedAt)
+                .last("LIMIT " + Math.max(1, limit)));
+    }
+
+    /**
+     * 按 ID 批量回查正常帖：向量命中后复核可见性（帖子可能在建索引后被下架或标记危机）
+     *
+     * @param ids 帖子ID列表
+     */
+    public List<CommunityPost> listNormalByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return postMapper.selectList(normalPostQuery().in(CommunityPost::getId, ids));
+    }
+
+    /**
+     * 关键词检索正常帖（标题 + 正文 LIKE），供 RAG 关键词降级路径使用
+     *
+     * @param keyword 关键词（调用方已清洗，≤50 字）
+     * @param limit   上限条数
+     */
+    public List<CommunityPost> searchNormalByKeyword(String keyword, int limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        String kw = keyword.trim();
+        return postMapper.selectList(normalPostQuery()
+                .and(w -> w.like(CommunityPost::getTitle, kw).or().like(CommunityPost::getContent, kw))
+                .orderByDesc(CommunityPost::getCreatedAt)
+                .last("LIMIT " + Math.max(1, limit)));
+    }
+
+    /** 正常帖可见性口径：status=0 且非危机帖（与前台列表一致） */
+    private LambdaQueryWrapper<CommunityPost> normalPostQuery() {
+        return new LambdaQueryWrapper<CommunityPost>()
+                .eq(CommunityPost::getStatus, CommunityPostStatus.NORMAL.getCode())
+                .ne(CommunityPost::getIsCrisis, 1);
     }
 
     // ==================== 我的 ====================

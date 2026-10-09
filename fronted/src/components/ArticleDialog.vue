@@ -69,6 +69,7 @@ import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { uploadFile, createArticle, updateArticle } from '@/api/admin'
 import { resolveFileUrl } from '@/config/index.js'
+import { uuid } from '@/utils/uuid'
 import RichTextEditor from '@/components/RichTextEditor.vue'
 
 const props = defineProps({
@@ -159,9 +160,8 @@ const commonTags = [
 const imgUrl = ref('')
 const beforeUpload = (file) => {
     // 针对上传的文件进行校验
-    console.log(file)
     const isImage = file.type.startsWith('image/')
-    const isLt5M = file.size / 1014 / 1014 < 5
+    const isLt5M = file.size / 1024 / 1024 < 5
     if (!isImage) {
         ElMessage.error('上传封面图片，请选择图片文件')
         return false
@@ -175,7 +175,7 @@ const beforeUpload = (file) => {
 const businessId = ref(null)
 const handleUploadRequest = async ({ file }) => {
     // UUID生成
-    businessId.value = crypto.randomUUID()
+    businessId.value = uuid()
     const fileRes = await uploadFile(file, {
         businessId: businessId.value
     })

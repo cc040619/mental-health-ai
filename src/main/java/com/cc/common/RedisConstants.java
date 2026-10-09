@@ -237,6 +237,10 @@ public final class RedisConstants {
     /** AI 实时测试限频窗口（秒） */
     public static final long AI_TEST_LIMIT_SECONDS = 10L;
 
+    /** MCP 出口限频计数 Key：MentalHealthAI:ai:mcp:rate（60s 固定窗口，所有 API Key 共用） */
+    public static final String MCP_RATE_LIMIT_KEY =
+            ROOT_NAMESPACE + SEPARATOR + MODULE_AI + SEPARATOR + "mcp" + SEPARATOR + "rate";
+
     /**
      * 构建用户未读通知计数 Key
      *

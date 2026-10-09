@@ -36,7 +36,11 @@ public class SecurityConfig {
             "/api/settings/public",
             "/api/crisis/config",
             // WebSocket 握手端点：浏览器原生 WS 无法携带自定义请求头，由握手拦截器校验 query token
-            "/ws/**"
+            "/ws/**",
+            // MCP 出口（SSE / Streamable HTTP）：外部客户端没有站内 JWT，由 McpApiKeyFilter 校验共享密钥
+            "/mcp",
+            "/mcp/**",
+            "/sse"
     };
 
     public static Boolean isPublicPATH(String requestUri) {
